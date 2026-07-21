@@ -59,34 +59,29 @@ const Terrain = {
     humidityMap: new Map(),
     vitalityMap: new Map(),
     biomeResolution: 4,
-    getBiomeAt: function (x, z, seed) {
-        /*const biome = 'Grass plains';
-        return biomes.getBiomeStats(biome);*/
-        //key can be changed to decrease biome resolution, but increase performance
-        const key = `
+    getKey: function (x, z) {
+        return `
         ${Math.floor(x / this.biomeResolution) * this.biomeResolution},
         ${Math.floor(z / this.biomeResolution) * this.biomeResolution}
         `;
-        if (this.biomeMap.has(key)) {
-            const name = this.biomeMap.get(key);
-            return biomes.getBiomeStats(name);
-        } else {
+    },
+    getBiomeAt: function (x, z, seed) {
+        // biome resolution can be changed to increase chunkiness, but also increase performance
+        const key = this.getKey(x, z);
+        if (this.biomeMap.has(key)) return biomes.getBiomeStats(this.biomeMap.get(key));
 
-            //get the biome
-            const { temperature, humidity, vitality } = this.getBiomeCategories(x, z, seed);
-            const biome = biomes.getBiome(temperature, humidity, vitality);
+        //get the biome
+        const { temperature, humidity, vitality } = this.getBiomeCategories(x, z, seed);
+        const biome = biomes.getBiome(temperature, humidity, vitality);
 
-            //store the biome to decrase function run time (noise function is expensive)
-            this.biomeMap.set(key, biome.name);
+        //store the biome to decrase function run time (noise function is expensive)
+        this.biomeMap.set(key, biome.name);
 
-            return biome;
-        }
+        return biome;
     },
     getBiomeCategories: function (x, z, seed) {
-        const key = `
-        ${Math.floor(x / this.biomeResolution) * this.biomeResolution},
-        ${Math.floor(z / this.biomeResolution) * this.biomeResolution}
-        `;
+        const key = this.getKey(x, z);
+
         //get biome temperature
         if (this.temperatureMap.has(key)) {
             var biomeTemperature = this.temperatureMap.get(key);
@@ -121,29 +116,84 @@ const Terrain = {
         }
     },
     getHeightAt: function (x, z, seed) {
-        //return Math.abs(Math.modulo(x, 32) - 16) * 0.2 + Math.abs(Math.modulo(z, 32) - 16) * 0.2;
-        const key = `
-        ${Math.floor(x)},
-        ${Math.floor(z)}
-        `;
+        return noise(x * 0.001, seed, z * 0.001) * 500;
 
-        if (this.heightMap.has(key)) {
-            return this.heightMap.get(key);
-        } else {
-            //base height (determines oceans / land)
-            const globalHeightMap = 64 + noise(x * 0.001, seed, z * 0.001) * 128;
+        const continentalness = noise(x * 0.005, seed, z * 0.005);
+        const erosion = noise(x * 0.001, seed, z * 0.001);
+        const peaksAndValleys = this.getPeaksAndValleys(x, z, seed);
 
-            const biome = this.getBiomeAt(x, z, seed);
-            const biomeHeight = noise(x * biome.steepness[0], seed, z * biome.steepness[0]) * biome.variation[0];
-            const height = globalHeightMap + biomeHeight;
+        const height = continentalness * erosion * peaksAndValleys;
 
-            this.heightMap.set(key, height);
+        return peaksAndValleys * 50;//height * 100;
+    },
+    getPeaksAndValleys(x, z, seed) {
+        let height = 0;
 
-            return height;
+        const octaves = 4;
+        const baseFrequency = 0.01;
+
+        for (let n = 0; n < octaves; n++) {
+            const frequency = baseFrequency * 2 ** n;
+            const amplitude = 1 / 2 ** n;
+
+            height += noise(x * frequency, seed, z * frequency) * amplitude;
         }
+
+        return height;
+    },
+    getSolidityAt: function (x, y, z, seed, generateCaves = false) {
+        //if (x > 0) return false; // generate a cross section
+        
+        // how randomly tall the terrain will generate (change this to be passed in later, for now just set it proportional to distance on x and z axes)
+        const WEIRDNESS = 1 + 0.1 * (Math.abs(x) + Math.abs(z));
+
+        // generate 3d noise
+        const octaves = 3;
+        const baseFrequency = 0.025;
+        let noiseValue = 0;
+        for (let n = 0; n < octaves; n++) {
+            const frequency = baseFrequency * 2 ** n;
+            const amplitude = (1 / 2 ** n);
+
+            noiseValue += noise(x * frequency + seed * 76564, y * frequency + seed * 724984, z * frequency + seed * 312844) * amplitude;
+        }
+
+        // bring the noise value back between 1 and 0
+        const maxAmplitude = 2 * (1 - 0.5 ** octaves);
+        noiseValue /= maxAmplitude;
+
+        // 0 density = no block generation
+        // 1 density = full block generation
+        // 0.5 density = roughly half block generation (should be centered at serfaceY to avoid ever increasing mountains)
+
+        // add 3d noise on top of a 2d noise layer
+        const surfaceHeight = this.getHeightAt(x, z, seed);
+        const heightFromSurface = y - surfaceHeight;
+        const solidityThreshold = 0.5 - heightFromSurface / WEIRDNESS;
+
+        // determine if a block is there
+        const solid = noiseValue < solidityThreshold;
+        if (!generateCaves) return solid;
+
+        if (!solid) return false;
+
+        // generate caverns
+        const cavernDensity = Math.clamp((heightFromSurface + 100) * 0.01, 0.6, 1);
+        const cavernNoiseValue = noise(x * 0.1 + seed * 58464, y * 0.1 + seed * 79284, z * 0.1 + seed * 304);
+        const cavern = cavernNoiseValue >= cavernDensity;
+        if (cavern) return false;
+
+        // generate noodle caves
+        const noodleCaveNoiseValue = noise(x * 0.01 + seed * 58464, y * 0.01 + seed * 79284, z * 0.01 + seed * 304);
+        const noodleCave = Math.abs(noodleCaveNoiseValue - 0.5) * 2 < 0.01;
+        if (noodleCave) return false;
+
+        return solid;
     },
     getTypeAt: function (x, y, z, seed) {
         const height = this.getHeightAt(x, z, seed);
+        return y < height ? 'stone' : 'air';
+
         if (y > height) return 'air';
         if (y < -5000) return 'magma';
 
@@ -176,14 +226,6 @@ const Terrain = {
 
         //default to void
         return 'air';
-    },
-    getTreeHeightAt: function (x, z, seed) {
-        const value = x * 73856093 ^ z * 19349663 ^ seed * 83492791;
-        const isTreeThere = Math.seededRandom(value) < 0.01;
-        if (!isTreeThere) return 0;
-
-        //tree height between 6 and 9
-        return 6 + Math.floor(Math.seededRandom(value) * 4);
     }
 }
 

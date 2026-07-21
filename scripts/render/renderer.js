@@ -63,6 +63,7 @@ export default class Renderer {
 
             uChunkFade: gl.getUniformLocation(this.worldProgram, 'uChunkFade'),
 
+            uDaylight: gl.getUniformLocation(this.worldProgram, 'uDaylight'),
             uSkyColor: gl.getUniformLocation(this.worldProgram, 'uSkyColor'),
             uSkyFadeStart: gl.getUniformLocation(this.worldProgram, 'uSkyFadeStart'),
             uSkyFadeEnd: gl.getUniformLocation(this.worldProgram, 'uSkyFadeEnd'),
@@ -218,6 +219,7 @@ export default class Renderer {
         const [proj, view] = this.setUpViewMatrices(camera);
 
         // sky
+        gl.uniform1f(this.worldUniforms.uDaylight, world.daylight);
         gl.uniform3f(this.worldUniforms.uSkyColor, ...skyColor);
         gl.uniform1f(this.worldUniforms.uSkyFadeStart, skyFadeStart);
         gl.uniform1f(this.worldUniforms.uSkyFadeEnd, skyFadeEnd);
@@ -260,7 +262,8 @@ export default class Renderer {
         const STRIDE = 9 * 4; // 3 pos + 3 normal + 3 color
 
         //set chunk fade
-        gl.uniform1f(this.worldUniforms.uChunkFade, chunk.fade);
+        const fadePercent = chunk.fade / chunk.maxFade;
+        gl.uniform1f(this.worldUniforms.uChunkFade, fadePercent);
 
         //bind the buffer
         gl.bindBuffer(gl.ARRAY_BUFFER, chunk.vertexBuffer);

@@ -6,7 +6,7 @@ export default class Hud {
         this.ctx = canvas.getContext("2d");
 
         this.maps = [
-            new BiomeMap('temperature'),
+            //new BiomeMap('temperature'),
             new ChunkMap()
         ];
     }

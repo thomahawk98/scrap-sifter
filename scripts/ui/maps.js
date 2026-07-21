@@ -66,8 +66,6 @@ class EnvironmentMap {
     }
 }
 
-
-
 export class BiomeMap extends EnvironmentMap {
     constructor(type, width = 256, height = 256) {
         super(width, height);
@@ -122,7 +120,7 @@ export class BiomeMap extends EnvironmentMap {
 export class ChunkMap extends EnvironmentMap {
     constructor(width = 512, height = 512) {
         super(width, height);
-        this.pixelSize = 16; //chunk size
+        this.pixelSize = 16; // chunk size, 1 pixel per block
         this.type = 'chunk status';
     }
 
@@ -147,21 +145,22 @@ export class ChunkMap extends EnvironmentMap {
     }
 
     getPixelColor(chunk) {
+        const alpha = chunk.empty ? 0.25 : 1;
         switch (chunk.state) {
-            case 'loaded':
-                return 'rgb(0,255,0)';
-            case 'reserve':
-                return 'rgb(0,155,0)';
-            case 'data':
-                return 'rgb(0,100,200)';
-            case 'unloaded':
-                return 'rgb(255,155,0)';
-            case 'compressed':
-                return 'rgb(255,0,0)';
             case 'new':
-                return 'rgb(100,0,0)';
+                return `rgba(100,0,255,${alpha})`;
+            case 'data':
+                return `rgba(0,100,200,${alpha})`;
+            case 'loaded':
+                return `rgba(0,255,0,${alpha})`;
+            case 'unloaded':
+                return `rgba(100,200,0,${alpha})`;
+            case 'archived':
+                return `rgba(255,125,0,${alpha})`;
+            case 'compressed':
+                return `rgba(255,0,0,${alpha})`;
             default:
-                return 'rgb(255,0,255)';
+                return `rgba(255,0,255,${alpha})`;
         }
     }
 }

@@ -3,10 +3,14 @@ import './systems/math-patch.js';
 
 //import other dependencies
 import World from './core/world.js';
-import ChunkManager from './core/chunk-manager.js';
+import ChunkManager from './chunks/chunk-manager.js';
+
 import Player from './entities/player.js';
+import PlayerMovementTracker from './systems/player-movement-tracker.js';
+
 import Camera from './render/camera.js';
 import Renderer from './render/renderer.js';
+
 import Hud from './render/hud.js';
 
 import terrain from './core/terrain.js';
@@ -16,17 +20,6 @@ const glCanvas = document.getElementById("glcanvas");
 const hudCanvas = document.getElementById("hudcanvas");
 resize();
 
-//define global elements
-const world = new World();
-const player = new Player(world);
-const camera = new Camera(player, 90, 0.1, 200);
-const renderer = new Renderer(glCanvas);
-const hud = new Hud(hudCanvas);
-const chunkManager = new ChunkManager();
-
-//generate terrain
-chunkManager.evaluateChunks(world, player, renderer);
-
 //resize function
 function resize() {
     glCanvas.width = window.innerWidth;
@@ -35,6 +28,17 @@ function resize() {
     hudCanvas.height = window.innerHeight;
 }
 window.addEventListener('resize', resize);
+
+//define global elements
+const world = new World();
+
+const player = new Player(world);
+const playerTracker = new PlayerMovementTracker(player, world);
+const camera = new Camera(player, 90, 0.1, 200);
+
+const renderer = new Renderer(glCanvas);
+const hud = new Hud(hudCanvas);
+const chunkManager = new ChunkManager(world);
 
 //set game pause state
 var paused = true;
@@ -61,8 +65,9 @@ document.addEventListener('mousemove', e => {
     }
 });
 document.addEventListener('wheel', e => {
-    const amount = -e.deltaY * 0.1;
-    camera.viewDistance += amount;
+    if (player.perspectiveMode == 0) return;
+
+    camera.viewDistance += e.deltaY * 0.075;
     camera.viewDistance = Math.clamp(camera.viewDistance, 3, 100);
 });
 
@@ -97,9 +102,17 @@ document.addEventListener('keydown', e => {
         world.chunks = new Map();
         world.unloadedChunks = new Map();
         chunkManager.dirtyChunkQueue = [];
+    }
 
-        //generate new
-        chunkManager.evaluateChunks(world, player, renderer);
+    if (keys[']']) {
+        const chunkCoords = world.getChunkCoords(...player.pos);
+        const chunk = world.getChunk(...chunkCoords);
+        console.log(chunk);
+        keys[']'] = false;
+    }
+    if (keys['[']) {
+        console.log(world.chunks, world.unloadedChunks);
+        keys['['] = false;
     }
 
     //cycle between maps
@@ -170,19 +183,28 @@ function updateFPS() {
     fps = Math.clamp(fps, 0, 60);
 }
 
+let initialized = true;
 function main() {
+
+    //generate terrain when ChunkGenerator is done generating
+    if (!initialized && !chunkManager.generator.isBusy && world.unloadedChunks.size > 0) {
+        chunkManager.evaluateChunks(player, renderer);
+        initialized = true;
+    }
+
     updateFPS();
 
     //update player and camera
     if (!paused) {
         world.update();
         player.update({ keys, mouse }, world, hud.canvas);
+        playerTracker.update();
         camera.update();
     }
 
-    //evaluate chunks if player crossed a chunk boundary
-    const crossed = player.updateChunkCoords(world);
-    chunkManager.update(world, player, renderer, crossed);
+    // evaluate chunks if player crossed a chunk boundary
+    const crossed = playerTracker.playerCrossedChunkBorder;
+    chunkManager.update(player, renderer, crossed);
 
     //rewrite maps
     for (const map of hud.maps) {
@@ -200,10 +222,12 @@ function main() {
         `FPS: ${fps}`, `Mode: ${player.mode}`, `On block: ${player.onBlock}`, '',
         `FOV: ${camera.fov}`, `Yaw: ${Math.round(camera.yaw * 100) / 100}`, `Pitch: ${Math.round(camera.pitch * 100) / 100}`, '',
         `Biome: ${biome.name}`, `Seed: ${world.seed}`, `Render Distance: ${world.renderDistance}`, '',
-        `Loaded Chunks: ${world.chunks.size}`, `Unloaded Chunks: ${world.unloadedChunks.size}`, `Dirty Chunks: ${chunkManager.dirtyChunkQueue.length}`, '',
+        `Loaded Chunks: ${world.chunks.size}`, `Unloaded Chunks: ${world.unloadedChunks.size}`,
+        `Unmeshed Chunks: ${chunkManager.dirtyChunkQueue.length}`, `Ungenerated Chunks: ${chunkManager.generator.requestQueue.size}`,
     ];
     hud.draw(paused, debugTexts, player, { keys, mouse });
 
     requestAnimationFrame(main);
 }
 main();
+

@@ -28,6 +28,8 @@ varying float vDistance;
 
 uniform float uChunkFade;
 
+uniform float uDaylight;
+
 uniform vec3 uSkyColor;
 uniform float uSkyFadeStart;
 uniform float uSkyFadeEnd;
@@ -64,10 +66,14 @@ void main() {
     float distanceFadeFactor = 1.0 - smoothstep(uSkyFadeStart, uSkyFadeEnd, vDistance);
     vec3 distanceFadeColor = mix(uSkyColor, fogColor, distanceFadeFactor);
     
-    // Apply chunk fade
-    vec3 finalColor = mix(uSkyColor, distanceFadeColor, uChunkFade);
+    vec3 black = vec3(0.0, 0.0, 0.0);
+    vec3 darkenedColor = mix(black, distanceFadeColor, uDaylight);
 
-    gl_FragColor = vec4(finalColor, 1.0);
+    // Apply chunk fade
+    vec3 chunkFadeColor = mix(uSkyColor, darkenedColor, uChunkFade);
+
+
+    gl_FragColor = vec4(chunkFadeColor, 1.0);
 }`
     ;
 

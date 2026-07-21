@@ -6,10 +6,11 @@ import { getBlockMaxHealth } from '../core/block-stats.js';
 
 export default class Player {
     constructor(world) {
-        this.spawnPos = [0, 100, 0];
-        this.cx = 0;
-        this.cy = 0;
-        this.cz = 0;
+        this.type = 'player';
+        this.mode = 'creative';
+
+        this.pos = [0, 0, 0];
+        this.spawnPos = [0, 0, 0];
 
         this.size = { x: 0.6, y: 1.85, z: 0.6 };
         this.head = {
@@ -17,9 +18,6 @@ export default class Player {
             pitch: 0,
             pos: this.spawnPos,
         };
-
-        this.type = 'player';
-        this.mode = 'creative';
 
         this.attackReload = 0;
         this.interactReload = 0;
@@ -197,15 +195,4 @@ export default class Player {
         //accelerate player
         this.velocity = this.velocity.map((v, i) => v + accel[i]);
     };
-
-    updateChunkCoords(world) {
-        const [cx, cy, cz] = world.getChunkCoords(...this.pos);
-        const crossed = (cx !== this.cx || cy !== this.cy || cz !== this.cz);
-
-        this.cx = cx;
-        this.cy = cy;
-        this.cz = cz;
-
-        return crossed;
-    }
 }

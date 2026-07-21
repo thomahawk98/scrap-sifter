@@ -1,29 +1,31 @@
 import { getBlockDropType } from './block-stats.js';
 import physics from '../systems/physics.js';
-import Chunk from './chunk.js';
+import Chunk from '../chunks/chunk.js';
 
 export default class World {
     constructor() {
         this.seed = Math.round(Math.random() * 10000);
         this.time = 0;
-        this.daylight = 0;
-        this.renderDistance = 3; // in chunks
+        this.daylight = 1;
+        this.renderDistance = 5; // in chunks
 
         this.CHUNK_SIZE = 16;
+        this.DAY_LENGTH_SECONDS = 600; // 10 minutes
+        this.BRIGHTNESS_AT_NOON = 2;
+
         this.chunks = new Map();
         this.unloadedChunks = new Map();
         this.compressedChunks = new Map();
+
+        this.update();
     }
 
     update() {
         this.time++;
 
-        // update light
-        const DAY_LENGTH_SECONDS = 60;
-        const BRIGHTNESS_AT_NOON = 5;
-
-        const frequency = DAY_LENGTH_SECONDS * 60;
-        const amplitude = BRIGHTNESS_AT_NOON;
+        // update daylight
+        const frequency = this.DAY_LENGTH_SECONDS * 60; // 60 fps
+        const amplitude = this.BRIGHTNESS_AT_NOON;
         const light = amplitude * Math.sin(this.time * Math.PI / frequency);
         this.daylight = light;
     }
@@ -33,10 +35,7 @@ export default class World {
     }
 
     getChunkCoords(x, y, z) {
-        const cx = Math.floor(x / this.CHUNK_SIZE);
-        const cy = Math.floor(y / this.CHUNK_SIZE);
-        const cz = Math.floor(z / this.CHUNK_SIZE);
-        return [cx, cy, cz];
+        return [x, y, z].map(a => Math.floor(a / this.CHUNK_SIZE));
     };
 
     getChunk(cx, cy, cz) {
@@ -179,15 +178,15 @@ export default class World {
     validateBlockPlacement(block, player) {
         const [x, y, z] = block.pos;
 
-        //check to make sure player has the block in their inventory
+        // check to make sure player has the block in their inventory
         const item = player.inventory.getSelectedItem();
         if (!item || item.amount <= 0 || item.type !== block.type) return false;
 
-        //check if a block is already at this position
+        // check if a block is already at this position
         const existing = this.getBlock(x, y, z);
         if (existing && existing.type !== 'air') return false;
 
-        //check if block is inside other entities
+        // check if block is inside other entities
         const entities = [player]; // add other entities to check for collision later
         const collides = physics.anyEntityCollidesWithBlock(block, entities);
         if (collides) return false;

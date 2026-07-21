@@ -1,26 +1,27 @@
 const CHUNK_SIZE = 16;
-import { encodeBlock, decodeBlock } from './block-registry.js';
-import { getFaceDirs } from './geometry.js';
-import { getBlockFaceColor } from './block-stats.js';
-import terrain from './terrain.js';
-import structures from './structures.js';
+import { encodeBlock, decodeBlock } from '../core/block-registry.js';
+import { getFaceDirs } from '../core/geometry.js';
+import { getBlockFaceColor } from '../core/block-stats.js';
+import terrain from '../core/terrain.js';
+import structures from '../core/structures.js';
 export default class Chunk {
     constructor(cx, cy, cz) {
         this.cx = cx;
         this.cy = cy;
         this.cz = cz;
 
+        this.generated = false;
         this.geometry = null;
         this.indexCount = 0;
 
         this.blocks = new Uint16Array(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE);
         this.tileEntities = null;
 
-        this.dirty = false;
+        this.dirty = true;
         this.state = 'new';
 
-        this.fade = 1;
-        this.isFading = false;
+        this.fade = 50;
+        this.maxFade = 50;
     }
 
     getIndex(lx, ly, lz) {
@@ -45,50 +46,6 @@ export default class Chunk {
 
         this.dirty = true;
         this.interactedWith = true;
-    }
-
-    generate(world) {
-        const seed = world.seed;
-
-        //generate terrain
-        for (let x = 0; x < CHUNK_SIZE; x++) {
-            for (let y = 0; y < CHUNK_SIZE; y++) {
-                for (let z = 0; z < CHUNK_SIZE; z++) {
-                    //find world cors of block
-                    const wx = this.cx * CHUNK_SIZE + x;
-                    const wy = this.cy * CHUNK_SIZE + y;
-                    const wz = this.cz * CHUNK_SIZE + z;
-
-                    const height = terrain.getHeightAt(wx, wz, seed);
-                    if (wy > height) continue;
-
-                    const type = terrain.getTypeAt(wx, wy, wz, seed);
-
-                    const block = { type };
-                    this.setBlock(x, y, z, block);
-                }
-            }
-        }
-
-        //generate structures
-        const structuresInChunk = structures.getStructuresForChunk(this.cx, this.cy, this.cz, world);
-        for (const structure of structuresInChunk) {
-            const data = structures.templates[structure.name];
-            for (const block of data.blocks) {
-                const lx = (block.x + structure.x) - this.cx * world.CHUNK_SIZE;
-                const ly = (block.y + structure.y) - this.cy * world.CHUNK_SIZE;
-                const lz = (block.z + structure.z) - this.cz * world.CHUNK_SIZE;
-
-                const insideChunk = (
-                    lx >= 0 && lx < world.CHUNK_SIZE &&
-                    ly >= 0 && ly < world.CHUNK_SIZE &&
-                    lz >= 0 && lz < world.CHUNK_SIZE
-                );
-                if (!insideChunk) continue;
-
-                this.setBlock(lx, ly, lz, block);
-            }
-        }
     }
 
     rebuildGeometry(world) {
@@ -183,7 +140,6 @@ export default class Chunk {
         };
     }
 
-    //maximized method
     isBlockSolid(lx, ly, lz, world) {
         const insideChunk = (
             lx >= 0 && lx < CHUNK_SIZE &&
@@ -211,8 +167,10 @@ export default class Chunk {
             gl.deleteBuffer(this.vertexBuffer);
             gl.deleteBuffer(this.indexBuffer);
         }
-        this.vertexBuffer = null;
-        this.indexBuffer = null;
-        //console.log('chunk', this.cx, this.cy, this.cz, 'deleted it\'s buffers --', deleteMessage);
+
+        delete this.vertexBuffer;
+        delete this.indexBuffer;
+
+        console.log(`chunk (${this.cx}, ${this.cy}, ${this.cz}) deleted it's buffers -- ${deleteMessage}`);
     }
 }
