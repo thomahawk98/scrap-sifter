@@ -6,9 +6,11 @@ const CHUNK_SIZE = 16;
 export default class World {
     constructor() {
         this.seed = Math.round(Math.random() * 10000);
+        this.renderDistance = 3; // in chunks
+
         this.chunks = new Map();
         this.unloadedChunks = new Map();
-        this.renderDistance = 3; // in chunks
+        this.compressedChunks = new Map();
     }
 
     getChunkKey(cx, cy, cz) {
@@ -22,16 +24,30 @@ export default class World {
         return [cx, cy, cz];
     };
 
-    getChunk(cx, cy, cz, create = false) {
+    getChunk(cx, cy, cz) {
         const key = this.getChunkKey(cx, cy, cz);
-        let chunk = this.chunks.get(key);
 
-        if (!chunk && create) {
-            chunk = new Chunk(cx, cy, cz);
-            this.chunks.set(key, chunk);
+        const loadedChunk = this.chunks.has(key);
+        if (loadedChunk) {
+            const chunk = this.chunks.get(key);
+            const valid = this.validateChunkData(chunk);
+            if(valid) return chunk;
         }
 
-        return chunk;
+        const unloadedChunk = this.unloadedChunks.has(key);
+        if (unloadedChunk) {
+            const chunk = this.unloadedChunks.get(key);
+            const valid = this.validateChunkData(chunk);
+            if(valid) return chunk;
+        }
+
+        return null;
+    }
+
+    validateChunkData(chunk) {
+        if(!chunk || !chunk.blocks) return false;
+        if(chunk.state == 'compressed' || chunk.state == 'new') return false;
+        return true;
     }
 
     getBlock(x, y, z) {
@@ -48,7 +64,7 @@ export default class World {
 
         //get block
         const block = chunk.getBlock(lx, ly, lz);
-        if(!block) return { pos: [x, y, z], type: 'air' };
+        if (!block) return { pos: [x, y, z], type: 'air' };
         return { pos: [x, y, z], ...block };
     }
 
@@ -95,89 +111,6 @@ export default class World {
         return success;
     };
 
-    generate() {
-        const distance = this.renderDistance;
-        for (let cx = -distance; cx < distance; cx++) {
-            for (let cy = -distance; cy < distance; cy++) {
-                for (let cz = -distance; cz < distance; cz++) {
-                    const chunk = this.getChunk(cx, cy, cz, true);
-                    chunk.generate(this.seed);
-                }
-            }
-        }
-    }
-    
-    evaluateLoadedChunks(player) {
-        const playerChunkCoords = this.getChunkCoords(...player.pos);
-        const distance = this.renderDistance;
-
-        //unload distant chunks
-        for (const [key, chunk] of this.chunks) {
-            const distX = Math.abs(chunk.cx - playerChunkCoords[0]);
-            const distY = Math.abs(chunk.cy - playerChunkCoords[1]);
-            const distZ = Math.abs(chunk.cz - playerChunkCoords[2]);
-
-            //chunk is out of player's render distance
-            const outOfRange = (distX > distance || distY > distance || distZ > distance);
-            if (outOfRange) {
-                //unload chunk
-                chunk.lastLoaded = performance.now();
-                this.unloadedChunks.set(key, chunk);
-                this.chunks.delete(key);
-            }
-        }
-
-        //load nearby unloaded chunks
-        for (let cx = playerChunkCoords[0] - distance; cx <= playerChunkCoords[0] + distance; cx++) {
-            for (let cy = playerChunkCoords[1] - distance; cy <= playerChunkCoords[1] + distance; cy++) {
-                for (let cz = playerChunkCoords[2] - distance; cz <= playerChunkCoords[2] + distance; cz++) {
-                    const key = this.getChunkKey(cx, cy, cz);
-                    if (this.chunks.has(key)) continue; //chunk is already loaded
-
-                    const unloadedChunk = this.unloadedChunks.get(key);
-                    if (unloadedChunk) {
-                        //reload unloaded chunk
-                        this.chunks.set(key, unloadedChunk);
-                        this.unloadedChunks.delete(key);
-                    } else {
-                        //generate new chunk
-                        const chunk = this.getChunk(cx, cy, cz, true);
-                        chunk.generate(this.seed);
-                    }
-                }
-            }
-        }
-
-        this.evaluateUnloadedChunks();
-    }
-
-    evaluateUnloadedChunks() {
-        //delete buffers for very old unloaded chunks
-        const now = performance.now();
-        const bufferDeleteTimeout = 5 * 60000; // 5 minutes
-
-        for (const [key, chunk] of this.unloadedChunks) {
-            if (now - chunk.lastLoaded > bufferDeleteTimeout) {
-                //don't permanently delete chunk data, just its buffers
-                chunk.deleteBuffers();
-            }
-        }
-
-        //delete buffers if unloaded chunks exceed a certain limit
-        const maxUnloadedChunks = 128;
-        if(this.unloadedChunks.size <= maxUnloadedChunks) return;
-
-        const sorted = [...this.unloadedChunks.values()].sort((a, b) => {
-            return a.lastLoaded - b.lastLoaded;
-        });
-
-        const excess = this.unloadedChunks.size - maxUnloadedChunks;
-        for(let i = 0; i < excess; i++) {
-            const chunk = sorted[i];
-            chunk.deleteBuffers();
-        }
-    }
-
     breakBlock(hit, player) {
         const block = this.getBlock(...hit.position);
         if (!block) return console.log('no block found at', hit.position);
@@ -190,22 +123,19 @@ export default class World {
         player.attackReload = 10;
         player.outlinedBlock = null;
 
-        //find item with same drop type in player inventory
+        //add block to player inventory
         const dropType = getBlockDropType(block.type);
-        const existing = player.inventory.find(e => e.type === dropType);
-
-        //add item to player inventory
-        if (existing) existing.amount++;
-        else player.inventory.push({ type: dropType, amount: 1 });
+        const item = { type: dropType, amount: 1 };
+        player.inventory.items.push(item);
+        player.inventory.moveToBestIndex(item);
 
         return true;
     }
 
 
     placeBlock(hit, player) {
-        let selected = player.inventory[player.selected];
-        if (!selected) return false;
-        if (selected.amount <= 0) return false;
+        const item = player.inventory.getSelectedItem();
+        if (!item || item.amount <= 0) return false;
 
         //find where the new block will go
         const [x, y, z] = hit.position;
@@ -213,7 +143,7 @@ export default class World {
         const pos = [x + nx, y + ny, z + nz];
 
         const block = {
-            pos, type: selected.type,
+            pos, type: item.type,
         };
 
         const collidesWithSelf = physics.anyEntityCollidesWithBlock(block, [player]);
@@ -225,11 +155,7 @@ export default class World {
         const valid = this.validateBlockPlacement(block, player);
         if (valid) {
             player.interactReload = 5;
-
-            //remove one block from player inventory stack
-            const item = player.inventory.find(e => e.type === selected.type);
             item.amount--;
-            if (item.amount <= 0) player.selected = 0; // reset selection if out of items
 
             return true;
         }
@@ -239,8 +165,8 @@ export default class World {
         const [x, y, z] = block.pos;
 
         //check to make sure player has the block in their inventory
-        const item = player.inventory.find(e => e.type === block.type);
-        if (!item || item.amount <= 0) return false;
+        const item = player.inventory.getSelectedItem();
+        if (!item || item.amount <= 0 || item.type !== block.type) return false;
 
         //check if a block is already at this position
         const existing = this.getBlock(x, y, z);

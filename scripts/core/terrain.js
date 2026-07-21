@@ -1,3 +1,6 @@
+import biomes from './biomes.js';
+
+//perlin noise implementation
 var noise = function (x, y, z) {
     function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
     function lerp(t, a, b) { return a + t * (b - a); }
@@ -50,68 +53,136 @@ var noise = function (x, y, z) {
 }
 
 const Terrain = {
-    getHeightAt: function (x, z, seed) {
-        //repeating hills
-
-        /*
-        const NW_slope_height = Math.min(Math.modulo(x, 16), Math.modulo(z, 16));
-        const SE_slope_height = Math.min(Math.modulo(-x - 1, 16), Math.modulo(-z - 1, 16));
-        return Math.min(NW_slope_height, SE_slope_height) * 0.5;
-        */
-
-        //weird slope
-        //return 64 * Math.sin(x * 0.01) * Math.cos(z * 0.01);
-
-        //giant hill
-        /*
-        const dist = Math.sqrt(x * x + z * z);
-        return 64 - Math.min(64, dist * 0.2);
-        */
-
-        //giant crater
-        //return Math.sqrt(x * x + z * z) * 0.5;
-
-        //city buildings grid
-        /*
-        const gridSize = 16;
-        const localX = Math.modulo(x, gridSize);
-        const localZ = Math.modulo(z, gridSize);
-        if (localX < 2 || localX > gridSize - 3 || localZ < 2 || localZ > gridSize - 3) {
-            return 0; //street area
+    heightMap: new Map(),
+    biomeMap: new Map(),
+    temperatureMap: new Map(),
+    humidityMap: new Map(),
+    vitalityMap: new Map(),
+    biomeResolution: 4,
+    getBiomeAt: function (x, z, seed) {
+        /*const biome = 'Grass plains';
+        return biomes.getBiomeStats(biome);*/
+        //key can be changed to decrease biome resolution, but increase performance
+        const key = `
+        ${Math.floor(x / this.biomeResolution) * this.biomeResolution},
+        ${Math.floor(z / this.biomeResolution) * this.biomeResolution}
+        `;
+        if (this.biomeMap.has(key)) {
+            const name = this.biomeMap.get(key);
+            return biomes.getBiomeStats(name);
         } else {
-            return 32; //building area
+
+            //get the biome
+            const { temperature, humidity, vitality } = this.getBiomeCategories(x, z, seed);
+            const biome = biomes.getBiome(temperature, humidity, vitality);
+
+            //store the biome to decrase function run time (noise function is expensive)
+            this.biomeMap.set(key, biome.name);
+
+            return biome;
         }
-            */
+    },
+    getBiomeCategories: function (x, z, seed) {
+        const key = `
+        ${Math.floor(x / this.biomeResolution) * this.biomeResolution},
+        ${Math.floor(z / this.biomeResolution) * this.biomeResolution}
+        `;
+        //get biome temperature
+        if (this.temperatureMap.has(key)) {
+            var biomeTemperature = this.temperatureMap.get(key);
+        } else {
+            const temperatureSeed = Math.seededRandom(seed) * 10000;
+            var biomeTemperature = noise(x * 0.005, temperatureSeed, z * 0.005);
+            this.temperatureMap.set(key, biomeTemperature);
+        }
 
-        //flat terrain for testing
-        //return 8;
+        //get biome humidity
+        if (this.humidityMap.has(key)) {
+            var biomeHumidity = this.humidityMap.get(key);
+        } else {
+            const humiditySeed = Math.seededRandom(seed * 728214 + 89347) * 10000;
+            var biomeHumidity = noise(x * 0.005, humiditySeed, z * 0.005);
+            this.humidityMap.set(key, biomeHumidity);
+        }
 
+        //get biome vitality
+        if (this.vitalityMap.has(key)) {
+            var biomeVitality = this.vitalityMap.get(key);
+        } else {
+            const vitalitySeed = Math.seededRandom(seed * 39075 + 10925) * 10000;
+            var biomeVitality = noise(x * 0.005, vitalitySeed, z * 0.005);
+            this.vitalityMap.set(key, biomeVitality);
+        }
 
+        return {
+            temperature: biomeTemperature,
+            humidity: biomeHumidity,
+            vitality: biomeVitality
+        }
+    },
+    getHeightAt: function (x, z, seed) {
+        const key = `
+        ${Math.floor(x)},
+        ${Math.floor(z)}
+        `;
 
-        //random terrain generation
+        if (this.heightMap.has(key)) {
+            return this.heightMap.get(key);
+        } else {
+            //base height (determines oceans / land)
+            const globalHeightMap = 64 + noise(x * 0.001, seed, z * 0.001) * 128;
 
-        //how steep the terrain is
-        const scaleX = 0.02;
-        const scaleZ = 0.02;
+            const biome = this.getBiomeAt(x, z, seed);
+            const biomeHeight = noise(x * biome.steepness[0], seed, z * biome.steepness[0]) * biome.variation[0];
+            const height = globalHeightMap + biomeHeight;
 
-        //how high the terrain can go
-        const scaleY = 32;
+            this.heightMap.set(key, height);
 
-        return noise(x * scaleX, seed, z * scaleZ) * scaleY;
+            return height;
+        }
     },
     getTypeAt: function (x, y, z, seed) {
         const height = this.getHeightAt(x, z, seed);
         if (y > height) return 'air';
+        if (y < -5000) return 'magma';
 
         const distFromTop = Math.floor(height - y);
-        if (distFromTop === 0) {
-            if (Math.random() < 0.1) return 'dead grass';
-            if (Math.random() < 0.2) return 'withered grass';
-            return 'grass';
+        const biome = this.getBiomeAt(x, z, seed);
+        const layers = biome.layers;
+
+        let accumulatedDepth = 0;
+        for (let i = 0; i < layers.length; i++) {
+            accumulatedDepth += layers[i].depth;
+            if (distFromTop < accumulatedDepth) {
+                //correct layer
+                const layer = layers[i];
+
+                //see if a block is randomly changed
+                if (layer.random) {
+                    const randomValue = Math.seededRandom(x * 104989 + y * 90387 + z * 20957 + seed * 8375);
+                    let randomChanceAccumulator = 0;
+                    for (const randomLayer of layer.random) {
+                        randomChanceAccumulator += randomLayer.chance;
+                        if (randomValue < randomChanceAccumulator) {
+                            return randomLayer.type;
+                        }
+                    }
+                }
+
+                return layer.type;
+            }
         }
-        if (distFromTop <= 2) return 'dirt';
-        if (distFromTop <= 10) return 'stone';
-        return 'rock';
+
+        //default to void
+        return 'air';
+    },
+    getTreeHeightAt: function (x, z, seed) {
+        const value = x * 73856093 ^ z * 19349663 ^ seed * 83492791;
+        const isTreeThere = Math.seededRandom(value) < 0.01;
+        if (!isTreeThere) return 0;
+
+        //tree height between 6 and 9
+        return 6 + Math.floor(Math.seededRandom(value) * 4);
     }
 }
 

@@ -84,3 +84,83 @@ project-root/
    └─ shaders/
 
 */
+
+/*
+
+Temperatures: frozen, cold, temperate, hot
+Humidity: arid, dry, humid, wet
+Vitality: sterile, barren, moderate, lush
+
+Biomes:
+-- Sterile --
+0000 frozen | cold | temperate | hot
+arid: tundra | cold desert | rocky wastes | ashlands
+dry: ice flats | taiga | grasslands | savanna
+humid: frozen swamp | boreal forest | deciduous forest | tropical seasonal forest
+wet: ice marsh | temperate rainforest | jungle | tropical rainforest
+arid: cold desert | rocky wastes | badlands | redwood badlands
+dry: savanna | shrubland | chaparral | oak woodland
+humid: tropical seasonal forest | dry rainforest | temperate rainforest | redwood forest
+wet: tropical rainforest | wet rainforest | foggy forest | giant redwood forest
+arid: cold desert | scrap heaps | junkyard | scrap wastelands
+
+-- Frozen --
+0000 sterile | barren | moderate | lush
+arid: tundra | snowy hills | frozen tiaga | frozen boreal forest
+dry: ice flats | ice spikes | frozen waves | aurora forest
+humid: polar flats | frozen sea | frozen marsh | frozen jungle
+wet: typhoon delta | frozen storm canyons | shimmering forest | frozen rainforest
+
+-- Cold --
+0000 sterile | barren | moderate | lush
+arid:
+dry:
+humid:
+wet:
+
+
+
+Mobs:
+brittlebone
+needle widow
+
+*/
+
+//terrain getHeightAt presets
+
+//repeating hills
+
+/*
+const NW_slope_height = Math.min(Math.modulo(x, 16), Math.modulo(z, 16));
+const SE_slope_height = Math.min(Math.modulo(-x - 1, 16), Math.modulo(-z - 1, 16));
+return Math.min(NW_slope_height, SE_slope_height) * 0.5;
+*/
+
+//weird slope
+//return 64 * Math.sin(x * 0.01) * Math.cos(z * 0.01);
+
+//giant hill
+/*
+const dist = Math.sqrt(x * x + z * z);
+return 64 - Math.min(64, dist * 0.2);
+*/
+
+//giant crater
+//return Math.sqrt(x * x + z * z) * 0.5;
+
+//city buildings grid
+/*
+const gridSize = 16;
+const localX = Math.modulo(x, gridSize);
+const localZ = Math.modulo(z, gridSize);
+if (localX < 2 || localX > gridSize - 3 || localZ < 2 || localZ > gridSize - 3) {
+    return 0; //street area
+} else {
+    return 32; //building area
+}
+    */
+
+//flat terrain for testing
+//return 8;
+
+

@@ -147,8 +147,13 @@ export default class Renderer {
         this.lastMesh = cubesData;
     }
 
-    uploadChunk(chunk) {
+    uploadChunk(chunk, reupload = false) {
         const gl = this.gl;
+
+        if(!chunk.geometry) {
+            chunk.dirty = true;
+            return;
+        };
 
         // Create buffers (once)
         if (!chunk.vertexBuffer) {
@@ -173,6 +178,7 @@ export default class Renderer {
         );
 
         chunk.indexCount = chunk.geometry.indices.length;
+        chunk.state = 'reserve';
     }
 
     render(world, camera, player) {

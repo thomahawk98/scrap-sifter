@@ -1,0 +1,43 @@
+ADD:
+menu
+inputs file
+
+    //camera f5 scrolling
+fog
+depth shader
+simplistic chunk edge geometry
+
+weather
+water 
+lava
+transparent block mesh
+
+structures
+ores
+trees
+grass
+
+music
+SFX
+textures
+
+health
+hunger
+temperature
+items
+
+day / night cycle
+sun / stars
+lighting map (light sources)
+
+chunk compression time out (proportional to amount of time spent in chunk)
+world files / downloads
+dirty chunk culling (out of player render distance)
+
+entity buffers
+mobs
+player in game (so you can see yourself in f5)
+
+FIX:
+move all the way bug
+friction in air bug (player.onBlock) (creative mode)

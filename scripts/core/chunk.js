@@ -16,6 +16,7 @@ export default class Chunk {
         this.tileEntities = null;
 
         this.dirty = false;
+        this.state = 'new';
     }
 
     getIndex(lx, ly, lz) {
@@ -41,7 +42,8 @@ export default class Chunk {
         this.dirty = true;
     }
 
-    generate(seed) {
+    generate(world) {
+        const seed = world.seed;
         //simple flat world for testing
         for (let x = 0; x < CHUNK_SIZE; x++) {
             for (let y = 0; y < CHUNK_SIZE; y++) {
@@ -61,10 +63,14 @@ export default class Chunk {
                 }
             }
         }
+
+        this.state = 'data';
     }
 
     rebuildGeometry(world) {
         this.geometry = this.getGeometry(world);
+        this.dirty = false;
+        this.state = 'unloaded';
     }
 
     //vertices and indices for the chunk
@@ -177,8 +183,7 @@ export default class Chunk {
         return block && block.type !== 'air';
     }
 
-    deleteBuffers(gl) {
-        this.geometry = null;
+    deleteBuffers(gl, deleteMessage) {
         if (gl) {
             gl.deleteBuffer(this.vertexBuffer);
             gl.deleteBuffer(this.indexBuffer);
@@ -186,6 +191,8 @@ export default class Chunk {
         this.vertexBuffer = null;
         this.indexBuffer = null;
 
-        console.log('chunk', this.cx, this.cy, this.cz, 'deleted it\'s  buffers');
+        this.state = 'unloaded';
+
+        //console.log('chunk', this.cx, this.cy, this.cz, 'deleted it\'s buffers --', deleteMessage);
     }
 }

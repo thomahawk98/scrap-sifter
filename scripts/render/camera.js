@@ -1,11 +1,17 @@
 export default class Camera {
     constructor(player, fov = 90, near = 0.1, far = 100) {
         this.player = player;
-        this.pos = player.pos || [0, 0, 0];
+        this.pos = [
+            player.head.pos[0],
+            player.head.pos[1] + player.size.y - 0.2,
+            player.head.pos[2]
+        ]
 
         this.fov = fov;
         this.near = near;
         this.far = far;
+
+        this.viewDistance = 3;
 
         this.pitch = 0;
         this.yaw = 0;
@@ -24,7 +30,7 @@ export default class Camera {
             Math.sin(pitch),
             -Math.cos(pitch) * Math.cos(yaw)
         ];
-        const dist = 3;
+        const dist = this.viewDistance;
 
         //update camera position based on mode
         if (mode == 0) {

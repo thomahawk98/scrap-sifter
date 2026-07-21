@@ -1,23 +1,35 @@
 import physics from '../systems/physics.js';
+import terrain from '../core/terrain.js';
+import Inventory from '../ui/inventory.js';
 import { raycast } from '../systems/raycast.js';
 import { getBlockMaxHealth } from '../core/block-stats.js';
 
 export default class Player {
-    constructor() {
-        this.pos = [0, 32, 0];
-        this.velocity = [0, 0, 0];
+    constructor(world) {
+        this.spawnPos = [0, 100, 0];
+        this.cx = 0;
+        this.cy = 0;
+        this.cz = 0;
+
         this.size = { x: 0.6, y: 1.85, z: 0.6 };
         this.head = {
             yaw: 0,
             pitch: 0,
-            pos: [0, 100, 0],
+            pos: this.spawnPos,
         };
 
         this.type = 'player';
-        this.mode = 'survival';
+        this.mode = 'creative';
 
         this.attackReload = 0;
         this.interactReload = 0;
+        this.inputs = {
+            keys: {},
+            mouse: {
+                inBox: function () { return false; },
+                buttons: [],
+            }
+        }
 
         this.perspectiveMode = 0;
 
@@ -26,34 +38,57 @@ export default class Player {
         this.reach = 5;
         this.outlinedBlock = null;
 
-        this.selected = 0;
-        this.inventory = [
-            /*{ type: 'wood', amount: 999 },
-            { type: 'grass', amount: 999 },
-            { type: 'rock', amount: 999 },
-            { type: 'concrete', amount: 999 },
-            { type: 'stone', amount: 999 },
-            { type: 'red wool', amount: 999 },*/
-        ];
+        this.inventory = new Inventory(this, 'default');
+        this.menuOpen = false;
+
+        this.respawn(world);
     }
-    update(inputs, world) {
-        this.updateInventory(inputs);
-        this.updateControls(inputs);
-        this.updateAcceleration(inputs);
+
+    update(inputs, world, canvas) {
+        this.inputs = inputs;
+
+        if (!this.menuOpen) this.updateAcceleration();
         physics.moveEntity(this, world);
-        this.checkIfCrossedChunkBoundary(world);
 
         this.updateBody();
-        this.interact(inputs, world);
+        this.interact(world);
+        this.inventory.update(canvas);
+
+        const keys = inputs.keys;
+
+        //change perspective mode
+        if (keys['r']) {
+            this.perspectiveMode = (this.perspectiveMode + 1) % 3;
+            keys['r'] = false;
+        }
+
+        //respawn player
+        if (keys['enter']) this.respawn(world);
+
+        //change mode
+        if (keys['\u{005c}']) {
+            const modes = ['survival', 'creative'];
+            const index = modes.indexOf(this.mode);
+            const newIndex = (index + 1) % modes.length;
+            this.mode = modes[newIndex];
+            keys['\u{005c}'] = false;
+        }
     };
 
-    respawn() {
-        this.pos = this.spawnPos || [0, 100, 0];
-        this.inventory = [];
-        this.selected = 0;
+    respawn(world, matchTerrainHeight = true) {
+        this.inventory.items = [];
+
+        this.velocity = [0, 0, 0];
+        this.pos = this.spawnPos;
+
+        if (matchTerrainHeight) {
+            const height = terrain.getHeightAt(this.pos[0], this.pos[2], world.seed);
+            this.pos[1] = height + 2;
+        }
     };
 
     updateBody() {
+        //make head follow body
         this.head.pos = [
             this.pos[0],
             this.pos[1] + this.size.y - 0.2,
@@ -61,85 +96,62 @@ export default class Player {
         ];
     };
 
-    interact(inputs, world) {
+    interact(world) {
         if (this.attackReload > 0) this.attackReload--;
         if (this.interactReload > 0) this.interactReload--;
 
-        const hit = raycast(this.head.pos, this.head.yaw, this.head.pitch, world, this.reach);
-        if (!hit) {
-            this.outlinedBlock = null;
-            return false;
-        }
+        if (!this.inventory.open) {
+            const hit = raycast(this.head.pos, this.head.yaw, this.head.pitch, world, this.reach);
+            if (!hit) {
+                this.outlinedBlock = null;
+                return false;
+            }
 
-        //check if the player is looking at a different block than before
-        let differentBlock = false;
-        if (this.outlinedBlock) {
-            if (this.outlinedBlock.pos[0] !== hit.position[0] ||
-                this.outlinedBlock.pos[1] !== hit.position[1] ||
-                this.outlinedBlock.pos[2] !== hit.position[2]) {
+            //check if the player is looking at a different block than before
+            let differentBlock = false;
+            if (this.outlinedBlock) {
+                if (this.outlinedBlock.pos[0] !== hit.position[0] ||
+                    this.outlinedBlock.pos[1] !== hit.position[1] ||
+                    this.outlinedBlock.pos[2] !== hit.position[2]) {
+                    differentBlock = true;
+                }
+            } else {
                 differentBlock = true;
             }
-        } else {
-            differentBlock = true;
-        }
 
-        //update the outlined block to be the block the player is looking at
-        if (differentBlock) {
-            this.outlinedBlock = {
-                pos: hit.position, type: hit.block.type,
-                health: getBlockMaxHealth(hit.block.type),
-                maxHealth: getBlockMaxHealth(hit.block.type)
-            }
-        }
-
-        if (inputs.mouse[0] && this.attackReload <= 0) {
-            const destroyed = world.breakBlock(hit, this);
-            if (destroyed) this.attackReload = 10;
-        }
-        if (inputs.mouse[2] && this.interactReload <= 0) {
-            world.placeBlock(hit, this);
-            this.interactReload = 10;
-        }
-    };
-
-    updateInventory(inputs) {
-        const keys = inputs.keys;
-        //clear inventory of items with amount <= 0
-        this.inventory = this.inventory.filter(item => item.amount > 0);
-        for (var n = 1; n < 9; n++) {
-            if (keys[n.toString()]) {
-                if (this.inventory.length >= n) {
-                    this.selected = n - 1;
-                } else {
-                    this.selected = this.inventory.length - 1; // reset to last item if out of bounds
+            //update the outlined block to be the block the player is looking at
+            if (differentBlock) {
+                const health = (this.mode == 'creative' ? 1 : getBlockMaxHealth(hit.block.type));
+                this.outlinedBlock = {
+                    pos: hit.position, type: hit.block.type,
+                    health, maxHealth: health
                 }
             }
+
+            if (this.inputs.mouse.buttons[0] && this.attackReload <= 0) {
+                const destroyed = world.breakBlock(hit, this);
+                if (destroyed) this.attackReload = 10;
+            }
+            if (this.inputs.mouse.buttons[2] && this.interactReload <= 0) {
+                world.placeBlock(hit, this);
+                this.interactReload = 8;
+            }
         }
     };
-    updateControls(inputs) {
-        const keys = inputs.keys;
-        if (keys['r']) {
-            //change perspective
-            this.perspectiveMode = (this.perspectiveMode + 1) % 3;
-            keys['r'] = false;
-        }
 
-        //player crouching
-        if (keys['shift']) this.size.y = 1.65;
-        else this.size.y = 1.85;
+    closeMenu() {
+        this.menuOpen = false;
+        if (this.inventory.open) this.inventory.open = false;
+    }
 
-        //respawn player
-        if (inputs.keys['enter']) {
-            this.respawn();
-        }
-    };
-    updateAcceleration(inputs) {
-        const keys = inputs.keys;
+    updateAcceleration() {
+        const keys = this.inputs.keys;
         let speed =
             keys['shift'] ? 0.0125 :
                 keys['q'] ? 0.0325 :
                     0.02;
         if (!this.onBlock) speed *= 0.1;
+        if (this.mode == 'creative') speed = 0.01;
 
         //handle player movement
         const forward = [Math.sin(this.head.yaw), 0, -Math.cos(this.head.yaw)];
@@ -165,7 +177,7 @@ export default class Player {
             }
         }
 
-        //jumping / flying / crouching
+        //jumping / flying
         if (keys[' ']) {
             if (this.mode == 'creative') {
                 accel[1] += speed;
@@ -173,38 +185,27 @@ export default class Player {
                 accel[1] += 0.225;
             }
         }
+
+        //player crouching / falling faster
         if (keys['shift']) {
             accel[1] -= speed;
-        }
-
-        //make player fall
-        if (this.mode !== "creative") {
-            const GRAVITY = 0.015;
-            this.velocity[1] -= GRAVITY;
+            this.size.y = 1.65;
+        } else {
+            this.size.y = 1.85;
         }
 
         //accelerate player
         this.velocity = this.velocity.map((v, i) => v + accel[i]);
     };
 
-    checkIfCrossedChunkBoundary(world) {
-        const CHUNK_SIZE = 16;
+    updateChunkCoords(world) {
+        const [cx, cy, cz] = world.getChunkCoords(...this.pos);
+        const crossed = (cx !== this.cx || cy !== this.cy || cz !== this.cz);
 
-        //previous chunk coords
-        const prevChunkX = Math.floor((this.pos[0] - this.velocity[0]) / CHUNK_SIZE);
-        const prevChunkY = Math.floor((this.pos[1] - this.velocity[1]) / CHUNK_SIZE);
-        const prevChunkZ = Math.floor((this.pos[2] - this.velocity[2]) / CHUNK_SIZE);
+        this.cx = cx;
+        this.cy = cy;
+        this.cz = cz;
 
-        //current chunk coords
-        const currentChunkX = Math.floor(this.pos[0] / CHUNK_SIZE);
-        const currentChunkY = Math.floor(this.pos[1] / CHUNK_SIZE);
-        const currentChunkZ = Math.floor(this.pos[2] / CHUNK_SIZE);
-
-        //if crossed chunk boundary, evaluate loaded chunks
-        if (prevChunkX !== currentChunkX ||
-            prevChunkY !== currentChunkY ||
-            prevChunkZ !== currentChunkZ) {
-            world.evaluateLoadedChunks(this);
-        }
+        return crossed;
     }
 }

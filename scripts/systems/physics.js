@@ -1,5 +1,11 @@
 const Physics = {
+    GRAVITY: 0.015,
     moveEntity(entity, world) {
+        //make player fall
+        if (entity.type == 'player' && entity.mode !== 'creative') {
+            entity.velocity[1] -= this.GRAVITY;
+        }
+
         //move the entity
         this.tryToMove(entity, entity.velocity[0], 0, 0, world);
         this.tryToMove(entity, 0, entity.velocity[1], 0, world);
