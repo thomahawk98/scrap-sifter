@@ -2,15 +2,30 @@ import { getBlockDropType } from './block-stats.js';
 import physics from '../systems/physics.js';
 import Chunk from './chunk.js';
 
-const CHUNK_SIZE = 16;
 export default class World {
     constructor() {
         this.seed = Math.round(Math.random() * 10000);
+        this.time = 0;
+        this.daylight = 0;
         this.renderDistance = 3; // in chunks
 
+        this.CHUNK_SIZE = 16;
         this.chunks = new Map();
         this.unloadedChunks = new Map();
         this.compressedChunks = new Map();
+    }
+
+    update() {
+        this.time++;
+
+        // update light
+        const DAY_LENGTH_SECONDS = 60;
+        const BRIGHTNESS_AT_NOON = 5;
+
+        const frequency = DAY_LENGTH_SECONDS * 60;
+        const amplitude = BRIGHTNESS_AT_NOON;
+        const light = amplitude * Math.sin(this.time * Math.PI / frequency);
+        this.daylight = light;
     }
 
     getChunkKey(cx, cy, cz) {
@@ -18,9 +33,9 @@ export default class World {
     }
 
     getChunkCoords(x, y, z) {
-        const cx = Math.floor(x / CHUNK_SIZE);
-        const cy = Math.floor(y / CHUNK_SIZE);
-        const cz = Math.floor(z / CHUNK_SIZE);
+        const cx = Math.floor(x / this.CHUNK_SIZE);
+        const cy = Math.floor(y / this.CHUNK_SIZE);
+        const cz = Math.floor(z / this.CHUNK_SIZE);
         return [cx, cy, cz];
     };
 
@@ -31,22 +46,22 @@ export default class World {
         if (loadedChunk) {
             const chunk = this.chunks.get(key);
             const valid = this.validateChunkData(chunk);
-            if(valid) return chunk;
+            if (valid) return chunk;
         }
 
         const unloadedChunk = this.unloadedChunks.has(key);
         if (unloadedChunk) {
             const chunk = this.unloadedChunks.get(key);
             const valid = this.validateChunkData(chunk);
-            if(valid) return chunk;
+            if (valid) return chunk;
         }
 
         return null;
     }
 
     validateChunkData(chunk) {
-        if(!chunk || !chunk.blocks) return false;
-        if(chunk.state == 'compressed' || chunk.state == 'new') return false;
+        if (!chunk || !chunk.blocks) return false;
+        if (chunk.state == 'compressed' || chunk.state == 'new') return false;
         return true;
     }
 
@@ -58,9 +73,9 @@ export default class World {
         if (!chunk) return { pos: [x, y, z], type: 'air' };
 
         //local cors
-        const lx = Math.modulo(x, CHUNK_SIZE);
-        const ly = Math.modulo(y, CHUNK_SIZE);
-        const lz = Math.modulo(z, CHUNK_SIZE);
+        const lx = Math.modulo(x, this.CHUNK_SIZE);
+        const ly = Math.modulo(y, this.CHUNK_SIZE);
+        const lz = Math.modulo(z, this.CHUNK_SIZE);
 
         //get block
         const block = chunk.getBlock(lx, ly, lz);
@@ -74,9 +89,9 @@ export default class World {
         if (!chunk) return false;
 
         //local cors
-        const lx = Math.modulo(x, CHUNK_SIZE);
-        const ly = Math.modulo(y, CHUNK_SIZE);
-        const lz = Math.modulo(z, CHUNK_SIZE);
+        const lx = Math.modulo(x, this.CHUNK_SIZE);
+        const ly = Math.modulo(y, this.CHUNK_SIZE);
+        const lz = Math.modulo(z, this.CHUNK_SIZE);
 
         //set block
         const success = chunk.setBlock(lx, ly, lz, block);

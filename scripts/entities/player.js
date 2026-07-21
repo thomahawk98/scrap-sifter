@@ -31,6 +31,11 @@ export default class Player {
             }
         }
 
+        this.dead = false;
+        this.vitals = {
+            health: 100, maxHealth: 100,
+        }
+
         this.perspectiveMode = 0;
 
         this.onBlock = false;
@@ -47,11 +52,16 @@ export default class Player {
     update(inputs, world, canvas) {
         this.inputs = inputs;
 
-        if (!this.menuOpen) this.updateAcceleration();
+        //move player
+        if (!this.menuOpen && !this.dead) this.updateAcceleration();
         physics.moveEntity(this, world);
 
-        this.updateBody();
-        this.interact(world);
+        if (!this.dead) {
+            this.updateBody();
+            this.interact(world);
+            this.updateVitals();
+        }
+
         this.inventory.update(canvas);
 
         const keys = inputs.keys;
@@ -81,6 +91,9 @@ export default class Player {
         this.velocity = [0, 0, 0];
         this.pos = this.spawnPos;
 
+        this.dead = false;
+        this.vitals.health = this.vitals.maxHealth;
+
         if (matchTerrainHeight) {
             const height = terrain.getHeightAt(this.pos[0], this.pos[2], world.seed);
             this.pos[1] = height + 2;
@@ -94,48 +107,46 @@ export default class Player {
             this.pos[1] + this.size.y - 0.2,
             this.pos[2],
         ];
+
+        this.size.y = this.inputs.keys['shift'] ? 1.5 : 1.8;
     };
+
+    updateVitals() {
+        this.vitals.health = Math.max(0, Math.min(this.vitals.health, this.vitals.maxHealth));
+        if (this.vitals.health == 0) this.dead = true;
+    }
 
     interact(world) {
         if (this.attackReload > 0) this.attackReload--;
         if (this.interactReload > 0) this.interactReload--;
 
-        if (!this.inventory.open) {
-            const hit = raycast(this.head.pos, this.head.yaw, this.head.pitch, world, this.reach);
-            if (!hit) {
-                this.outlinedBlock = null;
-                return false;
-            }
+        if (this.inventory.open) return;
 
-            //check if the player is looking at a different block than before
-            let differentBlock = false;
-            if (this.outlinedBlock) {
-                if (this.outlinedBlock.pos[0] !== hit.position[0] ||
-                    this.outlinedBlock.pos[1] !== hit.position[1] ||
-                    this.outlinedBlock.pos[2] !== hit.position[2]) {
-                    differentBlock = true;
-                }
-            } else {
-                differentBlock = true;
-            }
+        // get the block the player is looking at
+        const hit = raycast(this.head.pos, this.head.yaw, this.head.pitch, world, this.reach);
+        if (!hit) {
+            this.outlinedBlock = null;
+            return false
+        }
 
-            //update the outlined block to be the block the player is looking at
-            if (differentBlock) {
-                const health = (this.mode == 'creative' ? 1 : getBlockMaxHealth(hit.block.type));
-                this.outlinedBlock = {
-                    pos: hit.position, type: hit.block.type,
-                    health, maxHealth: health
-                }
+        // update the outlined block to be the block the player is looking at
+        const differentBlock = !this.outlinedBlock ? true : JSON.stringify(this.outlinedBlock.pos) == JSON.stringify(hit.position) ? false : true;
+        if (differentBlock) {
+            const health = this.mode == 'creative' ? 1 : getBlockMaxHealth(hit.block.type);
+            this.outlinedBlock = {
+                pos: hit.position, type: hit.block.type,
+                health, maxHealth: health
             }
+        }
 
-            if (this.inputs.mouse.buttons[0] && this.attackReload <= 0) {
-                const destroyed = world.breakBlock(hit, this);
-                if (destroyed) this.attackReload = 10;
-            }
-            if (this.inputs.mouse.buttons[2] && this.interactReload <= 0) {
-                world.placeBlock(hit, this);
-                this.interactReload = 8;
-            }
+        //interact with the world
+        if (this.inputs.mouse.buttons[0] && this.attackReload <= 0) {
+            const destroyed = world.breakBlock(hit, this);
+            if (destroyed) this.attackReload = 10;
+        }
+        if (this.inputs.mouse.buttons[2] && this.interactReload <= 0) {
+            world.placeBlock(hit, this);
+            this.interactReload = 8;
         }
     };
 
@@ -146,14 +157,14 @@ export default class Player {
 
     updateAcceleration() {
         const keys = this.inputs.keys;
-        let speed =
-            keys['shift'] ? 0.0125 :
-                keys['q'] ? 0.0325 :
-                    0.02;
-        if (!this.onBlock) speed *= 0.1;
-        if (this.mode == 'creative') speed = 0.01;
+        const movementSpeed = keys['shift'] ? 0.0125 : keys['q'] ? 0.0325 : 0.02;
 
-        //handle player movement
+        const surfaceTraction = physics.getSurfaceTraction(this);
+        const fluidTraction = physics.getFluidTraction(this);
+        const traction = Math.max(surfaceTraction, fluidTraction);
+
+        const speed = movementSpeed * traction;
+
         const forward = [Math.sin(this.head.yaw), 0, -Math.cos(this.head.yaw)];
         const right = [Math.sin(this.head.yaw - Math.PI / 2), 0, -Math.cos(this.head.yaw - Math.PI / 2)];
 
@@ -167,31 +178,20 @@ export default class Player {
 
         // Check if movement is needed in XZ plane
         if (target[0] !== 0 || target[2] !== 0) {
-            //only add motion if less than max speed
-            const currentSpeed = Math.distTo(0, 0, this.velocity[0], this.velocity[2]);
             // Normalize direction in XZ plane
             const length = Math.hypot(target[0], target[2]);
-            if (currentSpeed < 0.25) {
-                accel[0] += (target[0] / length) * speed;
-                accel[2] += (target[2] / length) * speed;
-            }
+            accel[0] += (target[0] / length) * speed;
+            accel[2] += (target[2] / length) * speed;
         }
 
-        //jumping / flying
-        if (keys[' ']) {
-            if (this.mode == 'creative') {
-                accel[1] += speed;
-            } else if (this.onBlock) {
-                accel[1] += 0.225;
-            }
-        }
+        // jumping
+        if (keys[' '] && this.onBlock) accel[1] += 0.2;
 
-        //player crouching / falling faster
-        if (keys['shift']) {
-            accel[1] -= speed;
-            this.size.y = 1.65;
-        } else {
-            this.size.y = 1.85;
+        // flight
+        const flightEnabled = this.mode == 'creative';
+        if (flightEnabled) {
+            if (keys[' ']) accel[1] += 0.01
+            if (keys['shift']) accel[1] -= 0.01;
         }
 
         //accelerate player

@@ -21,7 +21,8 @@ export default class Hud {
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
         //draw player inventory
-        player.inventory.draw(ctx, canvas, inputs);
+        const [x, y, alpha] = player.inventory.draw(ctx, canvas, inputs);
+        if (player.mode == 'survival') this.drawHealth(player, x, y, (1 - alpha));
 
         ctx.globalAlpha = 1;
         if (paused) {
@@ -34,23 +35,61 @@ export default class Hud {
             ctx.fillText('Click anywhere to unpause game', cx, cy);
         } else {
             //draw crosshair
-            const size = 10;
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = 'black';
-            ctx.beginPath();
-            ctx.moveTo(cx - size, cy); ctx.lineTo(cx + size, cy);
-            ctx.moveTo(cx, cy - size); ctx.lineTo(cx, cy + size);
-            ctx.stroke();
-            ctx.fill();
-
-            ctx.strokeStyle = 'white';
-            ctx.beginPath();
-            ctx.moveTo(cx - size, cy); ctx.lineTo(cx + size, cy);
-            ctx.moveTo(cx, cy - size); ctx.lineTo(cx, cy + size);
-            ctx.stroke();
-            ctx.fill();
+            this.drawCrosshair(ctx, cx, cy);
         }
 
+        this.drawDebugTexts(ctx, debugTexts);
+        this.drawMaps(ctx, player);
+    }
+
+    drawHealth(player, x, y, alpha) {
+        const ctx = this.ctx;
+        const canvas = this.canvas;
+
+        const cx = this.canvas.width * 0.5;
+        const cy = this.canvas.height * 0.5;
+        const percent = player.vitals.health / player.vitals.maxHealth;
+
+        ctx.globalAlpha = alpha;
+
+        ctx.save();
+        ctx.translate(cx, y - 65);
+
+        ctx.fillStyle = 'rgb(100,0,0)';
+        ctx.fillRect(-200, -7.5, 400, 15);
+
+        ctx.fillStyle = 'rgb(200,0,0)';
+        ctx.fillRect(-200, -7.5, 400 * percent, 15);
+
+        ctx.restore();
+
+        ctx.globalAlpha = 1;
+    }
+
+    drawCrosshair(ctx, cx, cy) {
+        const size = 10;
+        ctx.save();
+        ctx.translate(cx, cy);
+
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'black';
+        ctx.beginPath();
+        ctx.moveTo(-size, 0); ctx.lineTo(size, 0);
+        ctx.moveTo(0, -size); ctx.lineTo(0, size);
+        ctx.stroke();
+        ctx.fill();
+
+        ctx.strokeStyle = 'white';
+        ctx.beginPath();
+        ctx.moveTo(-size, 0); ctx.lineTo(size, 0);
+        ctx.moveTo(0, -size); ctx.lineTo(0, size);
+        ctx.stroke();
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    drawDebugTexts(ctx, debugTexts) {
         //debug info
         ctx.textBaseline = 'top';
         ctx.textAlign = 'left';
@@ -60,7 +99,9 @@ export default class Hud {
             const text = debugTexts[i];
             ctx.fillText(text, 10, 10 + i * 20);
         }
+    }
 
+    drawMaps(ctx, player) {
         //display maps
         for (let i = 0; i < this.maps.length; i++) {
             const map = this.maps[i];
@@ -78,9 +119,11 @@ export default class Hud {
                 x: x + mapWidth * 0.5,
                 y: y + mapHeight * 0.5,
             };
+
             ctx.save();
             ctx.translate(arrow.x, arrow.y);
             ctx.rotate(player.head.yaw);
+
             ctx.fillStyle = 'red';
             ctx.beginPath();
             ctx.moveTo(0, -8);
@@ -88,6 +131,7 @@ export default class Hud {
             ctx.lineTo(-5, 2);
             ctx.closePath();
             ctx.fill();
+
             ctx.restore();
         }
     }

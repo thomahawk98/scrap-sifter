@@ -8,6 +8,7 @@ import Player from './entities/player.js';
 import Camera from './render/camera.js';
 import Renderer from './render/renderer.js';
 import Hud from './render/hud.js';
+
 import terrain from './core/terrain.js';
 
 //init canvases
@@ -174,6 +175,7 @@ function main() {
 
     //update player and camera
     if (!paused) {
+        world.update();
         player.update({ keys, mouse }, world, hud.canvas);
         camera.update();
     }
@@ -185,9 +187,8 @@ function main() {
     //rewrite maps
     for (const map of hud.maps) {
         const rewrite = crossed || map.type == 'chunk status';
-        if(rewrite) map.uploadData(player.pos, world);
+        if (rewrite) map.uploadData(player.pos, world);
     }
-    
 
     //render the world (from camera POV)
     renderer.render(world, camera, player);
@@ -199,7 +200,7 @@ function main() {
         `FPS: ${fps}`, `Mode: ${player.mode}`, `On block: ${player.onBlock}`, '',
         `FOV: ${camera.fov}`, `Yaw: ${Math.round(camera.yaw * 100) / 100}`, `Pitch: ${Math.round(camera.pitch * 100) / 100}`, '',
         `Biome: ${biome.name}`, `Seed: ${world.seed}`, `Render Distance: ${world.renderDistance}`, '',
-        `Loaded Chunks: ${world.chunks.size}`, `Unloaded Chunks: ${world.unloadedChunks.size}`, `Dirty Chunks: ${chunkManager.dirtyChunkQueue.length}`, ''
+        `Loaded Chunks: ${world.chunks.size}`, `Unloaded Chunks: ${world.unloadedChunks.size}`, `Dirty Chunks: ${chunkManager.dirtyChunkQueue.length}`, '',
     ];
     hud.draw(paused, debugTexts, player, { keys, mouse });
 

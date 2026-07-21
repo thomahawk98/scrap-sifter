@@ -1,50 +1,92 @@
 const Physics = {
-    GRAVITY: 0.015,
+    GRAVITY: 0.0125,
     moveEntity(entity, world) {
-        //make player fall
-        if (entity.type == 'player' && entity.mode !== 'creative') {
+        // accelerate entity due to gravity
+        if (entity.type !== 'player' || entity.mode !== 'creative') {
             entity.velocity[1] -= this.GRAVITY;
         }
 
-        //move the entity
-        this.tryToMove(entity, entity.velocity[0], 0, 0, world);
-        this.tryToMove(entity, 0, entity.velocity[1], 0, world);
-        this.tryToMove(entity, 0, 0, entity.velocity[2], world);
-
-        const friction = entity.onBlock ? 0.2 : 0.01;
-
-        //damp velocity
-        entity.velocity[0] *= (1 - friction);
-        entity.velocity[1] *= (1 - friction * 0.5);
-        entity.velocity[2] *= (1 - friction);
-    },
-    tryToMove(entity, dx, dy, dz, world) {
-        const newPos = [entity.pos[0] + dx, entity.pos[1] + dy, entity.pos[2] + dz];
-
-        const shellEntity = { size: entity.size, pos: newPos };
-        const collides = this.anyBlockCollidesWithEntity(world, shellEntity);
-        if (!collides) {
-            if (dy !== 0) entity.onBlock = false;
-
-            entity.pos = newPos; // move allowed
-        } else {
-            if (dy < 0) entity.onBlock = true;
-
-            if (dx !== 0) entity.velocity[0] = 0;
-            if (dy !== 0) entity.velocity[1] = 0;
-            if (dz !== 0) entity.velocity[2] = 0;
+        // move the entity
+        for (let a = 0; a < 3; a++) {
+            this.tryToMove(entity, a, world);
         }
+
+        // damp velocity
+        const surfaceFriction = this.getSurfaceFriction(entity);
+        const fluidFriction = this.getFluidFriction(entity);
+
+        const surfaceDamping = 1 - surfaceFriction;
+        const fluidDamping = 1 - fluidFriction;
+        const damping = surfaceDamping * fluidDamping;
+
+        entity.velocity = entity.velocity.map(a => a * damping);
+    },
+    tryToMove(entity, axis, world) {
+        const speed = entity.velocity[axis];
+        if (speed == 0) return;
+
+        // find the new position
+        const newPos = [...entity.pos].map((value, index) => value += (index == axis) ? speed : 0);
+
+        // check new position for collisions
+        const entityShell = { size: entity.size, pos: newPos };
+        const collided = this.anyBlockCollidesWithEntity(world, entityShell);
+        if (!collided) entity.pos = newPos; // move allowed
+        else {
+            // take damage from colliding with blocks at high velocities
+            this.damageEntityFromSpeed(entity, speed);
+
+            entity.velocity[axis] = 0;
+
+            // move the entity to the edge of the colliding block
+            if (axis === 0) {
+                entity.pos.x = speed > 0
+                    ? collided.pos.x - entity.size.x / 2
+                    : collided.pos.x + 1 + entity.size.x / 2;
+            }
+            else if (axis === 1) {
+                if (speed > 0) {
+                    // Ceiling
+                    entity.pos.y = collided.pos.y - entity.size.y;
+                } else {
+                    // Floor
+                    entity.pos.y = collided.pos.y + 1;
+                }
+            }
+            else {
+                entity.pos.z = speed > 0
+                    ? collided.pos.z - entity.size.z / 2
+                    : collided.pos.z + 1 + entity.size.z / 2;
+            }
+        }
+
+        // set the entity onBlock value
+        if (axis == 1) entity.onBlock = speed < 0 && collided;
+    },
+    damageEntityFromSpeed(entity, speed) {
+        if (entity.vitals == undefined || entity.vitals.health == undefined) return console.log(entity, 'is missing vitals');
+        if (entity.type == 'player' && entity.mode == 'creative') return;
+
+        speed = Math.abs(speed);
+        const DAMAGE_THRESHOLD = 0.3;
+        if (speed < DAMAGE_THRESHOLD) return;
+
+        const excess = speed - DAMAGE_THRESHOLD;
+        const damage = (excess * 100);
+        entity.vitals.health -= damage;
     },
     anyBlockCollidesWithEntity(world, entityShell, all = false) {
-        const hits = all ? [] : false;
+        // all means we need to get all the blocks that collide with the entity, if not, we just need to know if one does
+
+        const hits = [];
 
         // Determine bounds of the entity hitbox
-        const minX = Math.floor(entityShell.pos[0] - entityShell.size.x / 2);
-        const maxX = Math.floor(entityShell.pos[0] + entityShell.size.x / 2);
+        const minX = Math.floor(entityShell.pos[0] - entityShell.size.x * 0.5);
+        const maxX = Math.floor(entityShell.pos[0] + entityShell.size.x * 0.5);
         const minY = Math.floor(entityShell.pos[1]);
         const maxY = Math.floor(entityShell.pos[1] + entityShell.size.y);
-        const minZ = Math.floor(entityShell.pos[2] - entityShell.size.z / 2);
-        const maxZ = Math.floor(entityShell.pos[2] + entityShell.size.z / 2);
+        const minZ = Math.floor(entityShell.pos[2] - entityShell.size.z * 0.5);
+        const maxZ = Math.floor(entityShell.pos[2] + entityShell.size.z * 0.5);
 
         for (let x = minX; x <= maxX; x++) {
             for (let y = minY; y <= maxY; y++) {
@@ -58,7 +100,7 @@ const Physics = {
             }
         }
 
-        return hits;
+        return all ? hits : false;
     },
     anyEntityCollidesWithBlock(blockShell, entities, all = false) {
         const hits = all ? [] : false;
@@ -100,6 +142,32 @@ const Physics = {
         }
 
         return hits;
+    },
+    getSurfaceFriction(entity) {
+        if (!entity.onBlock) return 0;
+        switch (entity.onBlock.type) {
+            case 'ice': return 0.02;
+            default: return 0.2;
+        }
+    },
+    getSurfaceTraction(entity) {
+        if (!entity.onBlock) return 0;
+        switch (entity.onBlock.type) {
+            case 'ice': return 0.25;
+            default: return 1;
+        }
+    },
+    getFluidFriction(entity) {
+        if (!entity.inFluid) return 0.01; // air resistance
+        switch (entity.inFluid.type) {
+            case 'water': return 0.05;
+        }
+    },
+    getFluidTraction(entity) {
+        if (!entity.inFluid) return 0.1; // allow a tiny bit of movement in the air
+        switch (entity.inFluid.type) {
+            case 'water': return 0.25;
+        }
     }
 }
 

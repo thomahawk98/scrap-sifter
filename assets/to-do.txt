@@ -2,20 +2,20 @@ ADD:
 menu
 inputs file
 
-    //camera f5 scrolling
-fog
-depth shader
-simplistic chunk edge geometry
+DONE camera f5 scrolling
+DONE fog
+DONE depth shader
+N/A simplistic chunk edge geometry
 
 weather
-water 
+water
 lava
 transparent block mesh
 
 structures
 ores
 trees
-grass
+bushes / grass / flowers
 
 music
 SFX
@@ -26,13 +26,14 @@ hunger
 temperature
 items
 
-day / night cycle
+DONE day / night cycle
 sun / stars
 lighting map (light sources)
 
 chunk compression time out (proportional to amount of time spent in chunk)
 world files / downloads
 dirty chunk culling (out of player render distance)
+global category variation regions
 
 entity buffers
 mobs

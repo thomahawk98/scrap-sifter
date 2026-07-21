@@ -60,9 +60,19 @@ export default class Renderer {
         this.worldUniforms = {
             modelViewMatrix: gl.getUniformLocation(this.worldProgram, 'modelViewMatrix'),
             projectionMatrix: gl.getUniformLocation(this.worldProgram, 'projectionMatrix'),
+
+            uChunkFade: gl.getUniformLocation(this.worldProgram, 'uChunkFade'),
+
+            uSkyColor: gl.getUniformLocation(this.worldProgram, 'uSkyColor'),
+            uSkyFadeStart: gl.getUniformLocation(this.worldProgram, 'uSkyFadeStart'),
+            uSkyFadeEnd: gl.getUniformLocation(this.worldProgram, 'uSkyFadeEnd'),
+
+            uFogColor: gl.getUniformLocation(this.worldProgram, 'uFogColor'),
+            uFogFadeStart: gl.getUniformLocation(this.worldProgram, 'uFogFadeStart'),
+            uFogFadeEnd: gl.getUniformLocation(this.worldProgram, 'uFogFadeEnd'),
         };
 
-        // Get attribute/uniform locations for outline program
+        // Get attribute / uniform locations for outline program
         this.outlineAttribs = {
             position: gl.getAttribLocation(this.outlineProgram, 'position'),
         };
@@ -147,10 +157,10 @@ export default class Renderer {
         this.lastMesh = cubesData;
     }
 
-    uploadChunk(chunk, reupload = false) {
+    uploadChunk(chunk, fadeIn = true) {
         const gl = this.gl;
 
-        if(!chunk.geometry) {
+        if (!chunk.geometry) {
             chunk.dirty = true;
             return;
         };
@@ -178,19 +188,44 @@ export default class Renderer {
         );
 
         chunk.indexCount = chunk.geometry.indices.length;
-        chunk.state = 'reserve';
+        if (fadeIn) {
+            chunk.fade = 0;
+            chunk.isFading = true;
+        }
     }
 
     render(world, camera, player) {
         const gl = this.gl;
 
+        const renderDistance = world.renderDistance * world.CHUNK_SIZE;
+
+        const skyColor = [0.375, 0.8, 1].map(a => a * world.daylight);
+        const skyFadeStart = renderDistance * 0.5;
+        const skyFadeEnd = renderDistance;
+
+        const fogColor = skyColor.map(a => a * 0.25); // Darken the sky color for fog effect
+        const fogFadeStart = 0;
+        const fogFadeEnd = renderDistance;
+
+        gl.useProgram(this.worldProgram);
+
         //clear screen
         gl.enable(gl.DEPTH_TEST);
-        gl.clearColor(0.125 * 3, 0.2 * 4, 0.25 * 4, 1.0); // sky blue
+        gl.clearColor(...skyColor, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
         //set up view matrices
         const [proj, view] = this.setUpViewMatrices(camera);
+
+        // sky
+        gl.uniform3f(this.worldUniforms.uSkyColor, ...skyColor);
+        gl.uniform1f(this.worldUniforms.uSkyFadeStart, skyFadeStart);
+        gl.uniform1f(this.worldUniforms.uSkyFadeEnd, skyFadeEnd);
+
+        // fog
+        gl.uniform3f(this.worldUniforms.uFogColor, ...fogColor);
+        gl.uniform1f(this.worldUniforms.uFogFadeStart, fogFadeStart);
+        gl.uniform1f(this.worldUniforms.uFogFadeEnd, fogFadeEnd);
 
         //render chunks
         for (const chunk of world.chunks.values()) {
@@ -211,7 +246,6 @@ export default class Renderer {
         const view = camera.getView();
 
         //set up camera view matrices
-        gl.useProgram(this.worldProgram);
         gl.uniformMatrix4fv(this.worldUniforms.projectionMatrix, false, proj);
         gl.uniformMatrix4fv(this.worldUniforms.modelViewMatrix, false, view);
 
@@ -219,9 +253,16 @@ export default class Renderer {
     }
 
     renderChunk(chunk) {
+        if (!chunk.vertexBuffer) return false;
+        if (!chunk.indexBuffer) return false;
+
         const gl = this.gl;
         const STRIDE = 9 * 4; // 3 pos + 3 normal + 3 color
 
+        //set chunk fade
+        gl.uniform1f(this.worldUniforms.uChunkFade, chunk.fade);
+
+        //bind the buffer
         gl.bindBuffer(gl.ARRAY_BUFFER, chunk.vertexBuffer);
 
         // Position

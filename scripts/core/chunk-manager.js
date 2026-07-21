@@ -8,11 +8,29 @@ export default class ChunkManager {
         if (crossed) this.evaluateChunks(world, player, renderer);
         this.addDirtyChunksToQueue(world);
         this.updateQueue(world, player, renderer, 1, true);
+
+        //update chunk fade values
+        for (const chunk of world.chunks.values()) {
+            if (!chunk.isFading) continue;
+
+            if (chunk.fade < 1) {
+                chunk.fade += 0.01;
+            } else {
+                chunk.fade = 1;
+                chunk.isFading = false;
+            }
+        }
     }
 
     addDirtyChunksToQueue(world) {
         for (const [key, chunk] of world.chunks.entries()) {
-            if (!chunk.dirty) continue;
+            if (!chunk.dirty) continue; // chunk is clean
+
+            const empty = arr => !arr.some(item => item !== 0);
+            if (empty(chunk.blocks) && !chunk.interactedWith) {
+                chunk.dirty = false;
+                continue; // chunk is empty
+            }
 
             if (this.dirtyChunkQueue.includes(chunk)) continue; // the chunk is already in the queue
             this.dirtyChunkQueue.push(chunk);
@@ -29,18 +47,30 @@ export default class ChunkManager {
             return aDist - bDist;
         });
 
+        //if player isnt moving fast on the y axis (falling) load chunks on the same y level as the player first
+        if (Math.abs(player.velocity[1]) <= 1) {
+            this.dirtyChunkQueue.sort((a, b) => {
+                const aDist = Math.abs(a.cy - py)
+                const bDist = Math.abs(b.cy - py);
+                return aDist - bDist;
+            });
+        }
+
         //upload max chunks per frame (1)
         let count = 0;
         while (this.dirtyChunkQueue.length > 0 && count < maxChunksPerFrame) {
             const chunk = this.dirtyChunkQueue.shift();
 
+            //check if chunk already has geometry (is being generated for the first time)
+            const fadeIn = chunk.geometry ? false : true;
             chunk.rebuildGeometry(world);
 
             const empty = (!chunk.geometry.vertices.length && !chunk.geometry.vertices.length);
             if (countEmptyChunks || !empty) {
-                renderer.uploadChunk(chunk);
+                renderer.uploadChunk(chunk, fadeIn);
                 count++;
             }
+            chunk.state = 'loaded';
         }
     }
 
@@ -60,21 +90,29 @@ export default class ChunkManager {
             for (let cy = py - threshold; cy <= py + threshold; cy++) {
                 for (let cz = pz - threshold; cz <= pz + threshold; cz++) {
 
-                    const distance = Math.sqrt((cx - px) ** 2 + (cy - py) ** 2 + (cz - pz) ** 2);
-                    if (distance > threshold) continue; //outside spherical render distance
+                    const inside = this.isChunkInThreshold([cx, cy, cz], pos, threshold);
+                    if (!inside) continue;
 
                     //check if chunk already exists
                     const key = world.getChunkKey(cx, cy, cz);
-                    if (world.chunks.has(key)) continue;
-                    if (world.unloadedChunks.has(key)) continue;
+                    if (world.chunks.has(key)) continue; //chunk is already loaded
 
-                    //create new chunk
-                    const chunk = new Chunk(cx, cy, cz);
-                    chunk.generate(world);
-                    world.unloadedChunks.set(key, chunk);
+                    if (world.unloadedChunks.has(key)) continue;
+                    this.generateChunk(cx, cy, cz, world);
                 }
             }
         }
+    }
+
+    generateChunk(cx, cy, cz, world) {
+        //create new chunk
+        const key = world.getChunkKey(cx, cy, cz);
+        const chunk = new Chunk(cx, cy, cz);
+
+        //generate chunk
+        chunk.generate(world);
+        chunk.state = 'data';
+        world.unloadedChunks.set(key, chunk);
     }
 
     loadNearbyChunks(world, pos, threshold, renderer) {
@@ -85,42 +123,45 @@ export default class ChunkManager {
             for (let cy = py - threshold; cy <= py + threshold; cy++) {
                 for (let cz = pz - threshold; cz <= pz + threshold; cz++) {
 
-                    //check distance to player
-                    const distance = Math.sqrt((cx - px) ** 2 + (cy - py) ** 2 + (cz - pz) ** 2);
-                    if (distance > threshold) continue; //outside spherical render distance
+                    const inside = this.isChunkInThreshold([cx, cy, cz], pos, threshold);
+                    if (!inside) continue;
 
                     //find chunk
                     const key = world.getChunkKey(cx, cy, cz);
                     if (world.chunks.has(key)) continue; //chunk is already loaded
-                    if (!world.unloadedChunks.has(key)) continue; //chunk does not exist
 
-                    //load chunk
-                    const chunk = world.unloadedChunks.get(key);
-                    world.chunks.set(key, chunk);
-                    world.unloadedChunks.delete(key);
+                    if (world.unloadedChunks.has(key)) {
+                        this.loadChunk(cx, cy, cz, world, renderer);
+                    }
 
-                    renderer.uploadChunk(chunk, true);
-                    chunk.state = 'loaded';
                 }
             }
         }
     }
 
+    loadChunk(cx, cy, cz, world, renderer) {
+        //find chunk
+        const key = world.getChunkKey(cx, cy, cz);
+        const chunk = world.unloadedChunks.get(key);
+
+        //transfer chunk
+        world.chunks.set(key, chunk);
+        world.unloadedChunks.delete(key);
+
+        //load chunk
+        renderer.uploadChunk(chunk, true);
+        chunk.state = 'loaded';
+    }
+
     reserveDistantChunks(world, pos, threshold) {
-        const [px, py, pz] = pos;
 
         //move distant chunks to reserve
         for (const [key, chunk] of world.chunks) {
-            const distX = Math.abs(chunk.cx - px);
-            const distY = Math.abs(chunk.cy - py);
-            const distZ = Math.abs(chunk.cz - pz);
 
-            //chunk is out of render threshold
-            var beyondThreshold = (distX > threshold || distY > threshold || distZ > threshold);
-            if (!beyondThreshold) continue; //chunk still in range
-
-            var beyondThreshold = Math.sqrt(distX ** 2 + distY ** 2 + distZ ** 2) > threshold;
-            if (!beyondThreshold) continue; //chunk still in range
+            //check if chunk is still in render distance
+            const chunkPos = [chunk.cx, chunk.cy, chunk.cz];
+            const inside = this.isChunkInThreshold(chunkPos, pos, threshold);
+            if (inside) continue;
 
             //unload chunk
             chunk.lastLoaded = performance.now();
@@ -137,23 +178,26 @@ export default class ChunkManager {
         const bufferDeleteTimeout = 3 * 60000; // 3 minutes
 
         for (const [key, chunk] of world.unloadedChunks) {
+            if (chunk.state !== 'reserve' && chunk.state !== 'loaded') continue;
             if (now - chunk.lastLoaded < bufferDeleteTimeout) continue;
+
             chunk.deleteBuffers(renderer.gl, 'unloaded chunk timeout'); //delete buffers
+            chunk.state = 'unloaded';
         }
+    }
 
-        //delete buffers if unloaded chunks exceed a certain limit
-        const maxUnloadedChunks = 1024;
-        if (world.unloadedChunks.size <= maxUnloadedChunks) return;
+    isChunkInThreshold(cpos, pos, threshold) {
+        const [cx, cy, cz] = cpos;
+        const [px, py, pz] = pos;
 
-        const sorted = [...world.unloadedChunks.values()].sort((a, b) => {
-            return a.lastLoaded - b.lastLoaded;
-        });
+        //check if chunk is still in render distance
+        const distX = Math.abs(cx - px), distY = Math.abs(cy - py), distZ = Math.abs(cz - pz);
+        const outsideThreshold = distX > threshold || distY > threshold || distZ > threshold;
+        if (outsideThreshold) return false;
 
-        const excess = world.unloadedChunks.size - maxUnloadedChunks;
-        for (let i = 0; i < excess; i++) {
-            const chunk = sorted[i];
-            chunk.deleteBuffers(renderer.gl, `too many unloaded chunks (${world.unloadedChunks.size})`);
-        }
+        const distance = Math.sqrt((cx - px) ** 2 + (cy - py) ** 2 + (cz - pz) ** 2);
+        const inside = distance <= threshold;
+        return inside;
     }
 }
 

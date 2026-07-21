@@ -10,8 +10,8 @@ export default class Inventory {
         this.WIDTH = 8;
         this.HEIGHT = 4;
 
-        this.SLOT_SIZE = 80;
-        this.SLOT_SPACING = 100;
+        this.SLOT_SIZE = 70;
+        this.SLOT_SPACING = 85;
 
         this.open = false;
         this.openAnimation = 0; //0 = closed, 100 = open
@@ -42,7 +42,8 @@ export default class Inventory {
             //draw slot
             const s = this.SLOT_SIZE;
             const inBox = this.player.inputs.mouse.inBox(x - s * 0.5, y - s * 0.5, s, s);
-            this.drawSlot(ctx, i, x, y, inBox);
+            const selected = this.selectedSlot == i;
+            this.drawSlot(ctx, x, y, selected, inBox);
 
             //draw item
             const item = this.items.find(a => a.slot == i && !a.delete);
@@ -51,12 +52,16 @@ export default class Inventory {
 
             ctx.globalAlpha = 1;
         }
+
+        const { x, y } = this.getDrawPosition(0, canvas);
+        const alpha = Math.clamp(this.openAnimation / 50 - 0.5, 0, 1);
+        return [x, y, alpha];
     }
 
-    drawSlot(ctx, i, x, y, inBox) {
+    drawSlot(ctx, x, y, selected, inBox) {
         ctx.fillStyle = inBox ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.15)';
         ctx.strokeStyle = 'black';
-        ctx.lineWidth = this.selectedSlot == i ? 4 : inBox ? 3 : 2;
+        ctx.lineWidth = selected ? 4 : inBox ? 3 : 2;
 
         //draw empty slot
         ctx.beginPath();

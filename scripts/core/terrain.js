@@ -121,6 +121,7 @@ const Terrain = {
         }
     },
     getHeightAt: function (x, z, seed) {
+        //return Math.abs(Math.modulo(x, 32) - 16) * 0.2 + Math.abs(Math.modulo(z, 32) - 16) * 0.2;
         const key = `
         ${Math.floor(x)},
         ${Math.floor(z)}
