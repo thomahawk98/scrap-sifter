@@ -93,15 +93,7 @@ document.addEventListener('keydown', e => {
         document.exitPointerLock();
         paused = true;
 
-        //delete gl buffers
-        for (const chunk of world.chunks.values()) {
-            chunk.deleteBuffers(renderer.gl, 'player force unloaded all chunks');
-        }
-
-        //delete chunks
-        world.chunks = new Map();
-        world.unloadedChunks = new Map();
-        chunkManager.dirtyChunkQueue = [];
+        chunkManager.clear(renderer);
     }
 
     if (keys[']']) {
@@ -111,7 +103,7 @@ document.addEventListener('keydown', e => {
         keys[']'] = false;
     }
     if (keys['[']) {
-        console.log(world.chunks, world.unloadedChunks);
+        console.log(world.chunks);
         keys['['] = false;
     }
 
@@ -183,15 +175,9 @@ function updateFPS() {
     fps = Math.clamp(fps, 0, 60);
 }
 
-let initialized = true;
 function main() {
 
     //generate terrain when ChunkGenerator is done generating
-    if (!initialized && !chunkManager.generator.isBusy && world.unloadedChunks.size > 0) {
-        chunkManager.evaluateChunks(player, renderer);
-        initialized = true;
-    }
-
     updateFPS();
 
     //update player and camera
@@ -222,7 +208,7 @@ function main() {
         `FPS: ${fps}`, `Mode: ${player.mode}`, `On block: ${player.onBlock}`, '',
         `FOV: ${camera.fov}`, `Yaw: ${Math.round(camera.yaw * 100) / 100}`, `Pitch: ${Math.round(camera.pitch * 100) / 100}`, '',
         `Biome: ${biome.name}`, `Seed: ${world.seed}`, `Render Distance: ${world.renderDistance}`, '',
-        `Loaded Chunks: ${world.chunks.size}`, `Unloaded Chunks: ${world.unloadedChunks.size}`,
+        `Resident Chunks: ${world.chunks.size}`, `Active Chunks: ${chunkManager.getActiveChunkCount()}`,
         `Unmeshed Chunks: ${chunkManager.dirtyChunkQueue.length}`, `Ungenerated Chunks: ${chunkManager.generator.requestQueue.size}`,
     ];
     hud.draw(paused, debugTexts, player, { keys, mouse });

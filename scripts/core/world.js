@@ -1,6 +1,5 @@
 import { getBlockDropType } from './block-stats.js';
 import physics from '../systems/physics.js';
-import Chunk from '../chunks/chunk.js';
 
 export default class World {
     constructor() {
@@ -14,8 +13,6 @@ export default class World {
         this.BRIGHTNESS_AT_NOON = 2;
 
         this.chunks = new Map();
-        this.unloadedChunks = new Map();
-        this.compressedChunks = new Map();
 
         this.update();
     }
@@ -41,27 +38,12 @@ export default class World {
     getChunk(cx, cy, cz) {
         const key = this.getChunkKey(cx, cy, cz);
 
-        const loadedChunk = this.chunks.has(key);
-        if (loadedChunk) {
-            const chunk = this.chunks.get(key);
-            const valid = this.validateChunkData(chunk);
-            if (valid) return chunk;
-        }
-
-        const unloadedChunk = this.unloadedChunks.has(key);
-        if (unloadedChunk) {
-            const chunk = this.unloadedChunks.get(key);
-            const valid = this.validateChunkData(chunk);
-            if (valid) return chunk;
-        }
-
-        return null;
+        const chunk = this.chunks.get(key);
+        return this.validateChunkData(chunk) ? chunk : null;
     }
 
     validateChunkData(chunk) {
-        if (!chunk || !chunk.blocks) return false;
-        if (chunk.state == 'compressed' || chunk.state == 'new') return false;
-        return true;
+        return !!chunk && chunk.dataStatus === 'ready' && !!chunk.blocks;
     }
 
     getBlock(x, y, z) {
@@ -84,7 +66,7 @@ export default class World {
 
     setBlock(x, y, z, block) {
         const [cx, cy, cz] = this.getChunkCoords(x, y, z);
-        const chunk = this.getChunk(cx, cy, cz, true);
+        const chunk = this.getChunk(cx, cy, cz);
         if (!chunk) return false;
 
         //local cors
@@ -98,28 +80,28 @@ export default class World {
         // Edge handling (VERY important)
         if (lx === 0) {
             const chunk = this.getChunk(cx - 1, cy, cz);
-            if (chunk) chunk.dirty = true;
+            if (chunk) chunk.invalidateMesh();
         }
         if (lx === 15) {
             const chunk = this.getChunk(cx + 1, cy, cz);
-            if (chunk) chunk.dirty = true;
+            if (chunk) chunk.invalidateMesh();
         }
         if (ly === 0) {
             const chunk = this.getChunk(cx, cy - 1, cz);
-            if (chunk) chunk.dirty = true;
+            if (chunk) chunk.invalidateMesh();
         }
         if (ly === 15) {
             const chunk = this.getChunk(cx, cy + 1, cz);
-            if (chunk) chunk.dirty = true;
+            if (chunk) chunk.invalidateMesh();
         }
 
         if (lz === 0) {
             const chunk = this.getChunk(cx, cy, cz - 1);
-            if (chunk) chunk.dirty = true;
+            if (chunk) chunk.invalidateMesh();
         }
         if (lz === 15) {
             const chunk = this.getChunk(cx, cy, cz + 1);
-            if (chunk) chunk.dirty = true;
+            if (chunk) chunk.invalidateMesh();
         }
 
         return success;

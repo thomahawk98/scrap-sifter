@@ -34,12 +34,9 @@ export default class Renderer {
         this.gl = canvas.getContext('webgl');
         if (!this.gl) throw new Error("WebGL not supported!");
 
-        this.stride = 9 * 4; // 3 floats for pos + 3 normal + 3 color
-
-        // Buffers
-        this.worldBuffer = this.gl.createBuffer();
-        this.indexBuffer = this.gl.createBuffer();
+        // Chunk buffers are renderer-owned and keyed by chunk coordinates.
         this.outlineBuffer = this.gl.createBuffer();
+        this.chunkBuffers = new Map();
 
         this.init();
     }
@@ -131,49 +128,21 @@ export default class Renderer {
         return shader;
     }
 
-    // -------------------------------
-    // MESH UPLOAD
-    // -------------------------------
-    uploadMeshData(cubesData) {
-        const gl = this.gl;
-
-        // Vertex buffer
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.worldBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, cubesData.vertices, gl.STATIC_DRAW);
-
-        // Index buffer
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, cubesData.indices, gl.STATIC_DRAW);
-
-        // Setup attributes
-        gl.enableVertexAttribArray(this.worldAttribs.position);
-        gl.vertexAttribPointer(this.worldAttribs.position, 3, gl.FLOAT, false, this.stride, 0);
-
-        gl.enableVertexAttribArray(this.worldAttribs.normal);
-        gl.vertexAttribPointer(this.worldAttribs.normal, 3, gl.FLOAT, false, this.stride, 12);
-
-        gl.enableVertexAttribArray(this.worldAttribs.color);
-        gl.vertexAttribPointer(this.worldAttribs.color, 3, gl.FLOAT, false, this.stride, 24);
-
-        this.lastMesh = cubesData;
-    }
-
+    // Upload CPU geometry into renderer-owned GPU buffers. Reusing a chunk's
+    // buffers lets mesh edits replace their contents without reallocating them.
     uploadChunk(chunk, fadeIn = true) {
         const gl = this.gl;
 
-        if (!chunk.geometry) {
-            chunk.dirty = true;
-            return;
-        };
-
-        // Create buffers (once)
-        if (!chunk.vertexBuffer) {
-            chunk.vertexBuffer = gl.createBuffer();
-            chunk.indexBuffer = gl.createBuffer();
+        if (!chunk.geometry || chunk.residency !== 'active') return;
+        const key = `${chunk.cx},${chunk.cy},${chunk.cz}`;
+        let buffers = this.chunkBuffers.get(key);
+        if (!buffers) {
+            buffers = { vertexBuffer: gl.createBuffer(), indexBuffer: gl.createBuffer(), indexCount: 0 };
+            this.chunkBuffers.set(key, buffers);
         }
 
         // Upload vertex data
-        gl.bindBuffer(gl.ARRAY_BUFFER, chunk.vertexBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
         gl.bufferData(
             gl.ARRAY_BUFFER,
             chunk.geometry.vertices,
@@ -181,19 +150,28 @@ export default class Renderer {
         );
 
         // Upload index data
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, chunk.indexBuffer);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indexBuffer);
         gl.bufferData(
             gl.ELEMENT_ARRAY_BUFFER,
             chunk.geometry.indices,
             gl.STATIC_DRAW
         );
 
-        chunk.indexCount = chunk.geometry.indices.length;
+        buffers.indexCount = chunk.geometry.indices.length;
         if (fadeIn) {
             chunk.fade = 0;
-            chunk.isFading = true;
         }
     }
+
+    deleteChunk(key) {
+        const buffers = this.chunkBuffers.get(key);
+        if (!buffers) return;
+        this.gl.deleteBuffer(buffers.vertexBuffer);
+        this.gl.deleteBuffer(buffers.indexBuffer);
+        this.chunkBuffers.delete(key);
+    }
+
+    hasChunk(key) { return this.chunkBuffers.has(key); }
 
     render(world, camera, player) {
         const gl = this.gl;
@@ -231,7 +209,7 @@ export default class Renderer {
 
         //render chunks
         for (const chunk of world.chunks.values()) {
-            this.renderChunk(chunk);
+            if (chunk.residency === 'active') this.renderChunk(chunk);
         }
 
         //render outlined block
@@ -255,8 +233,8 @@ export default class Renderer {
     }
 
     renderChunk(chunk) {
-        if (!chunk.vertexBuffer) return false;
-        if (!chunk.indexBuffer) return false;
+        const buffers = this.chunkBuffers.get(`${chunk.cx},${chunk.cy},${chunk.cz}`);
+        if (!buffers) return false;
 
         const gl = this.gl;
         const STRIDE = 9 * 4; // 3 pos + 3 normal + 3 color
@@ -266,7 +244,7 @@ export default class Renderer {
         gl.uniform1f(this.worldUniforms.uChunkFade, fadePercent);
 
         //bind the buffer
-        gl.bindBuffer(gl.ARRAY_BUFFER, chunk.vertexBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
 
         // Position
         gl.vertexAttribPointer(this.worldAttribs.position, 3, gl.FLOAT, false, STRIDE, 0);
@@ -280,10 +258,10 @@ export default class Renderer {
         gl.vertexAttribPointer(this.worldAttribs.color, 3, gl.FLOAT, false, STRIDE, 6 * 4);
         gl.enableVertexAttribArray(this.worldAttribs.color);
 
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, chunk.indexBuffer);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indexBuffer);
         gl.drawElements(
             gl.TRIANGLES,
-            chunk.indexCount,
+            buffers.indexCount,
             gl.UNSIGNED_INT,
             0
         );
@@ -306,10 +284,7 @@ export default class Renderer {
         gl.lineWidth(1.5);
         gl.drawArrays(gl.LINES, 0, outlineVertices.length / 3);
 
-        // Switch back to main program
+        // Restore the world shader; the next chunk draw binds its own buffers.
         gl.useProgram(this.worldProgram);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.worldBuffer);
-        gl.enableVertexAttribArray(this.worldAttribs.position);
-        gl.vertexAttribPointer(this.worldAttribs.position, 3, gl.FLOAT, false, this.stride, 0);
     }
 }

@@ -126,12 +126,7 @@ export class ChunkMap extends EnvironmentMap {
 
     getData(world) {
         if (!world) return new Map();
-
-        const data = new Map([
-            ...world.chunks,
-            ...world.unloadedChunks,
-        ])
-        return data;
+        return world.chunks;
     }
 
     getDrawCors(key, position) {
@@ -146,21 +141,10 @@ export class ChunkMap extends EnvironmentMap {
 
     getPixelColor(chunk) {
         const alpha = chunk.empty ? 0.25 : 1;
-        switch (chunk.state) {
-            case 'new':
-                return `rgba(100,0,255,${alpha})`;
-            case 'data':
-                return `rgba(0,100,200,${alpha})`;
-            case 'loaded':
-                return `rgba(0,255,0,${alpha})`;
-            case 'unloaded':
-                return `rgba(100,200,0,${alpha})`;
-            case 'archived':
-                return `rgba(255,125,0,${alpha})`;
-            case 'compressed':
-                return `rgba(255,0,0,${alpha})`;
-            default:
-                return `rgba(255,0,255,${alpha})`;
-        }
+        if (chunk.dataStatus === 'generating') return `rgba(100,0,255,${alpha})`;
+        if (chunk.dataStatus !== 'ready') return `rgba(255,0,255,${alpha})`;
+        if (chunk.residency !== 'active') return `rgba(100,200,0,${alpha})`;
+        if (chunk.meshStatus === 'ready') return `rgba(0,255,0,${alpha})`;
+        return `rgba(0,100,200,${alpha})`;
     }
 }
