@@ -47,20 +47,20 @@ export default class Player {
         this.respawn(world);
     }
 
-    update(inputs, world, canvas) {
+    update(inputs, world, canvas, deltaScale = 1) {
         this.inputs = inputs;
 
         //move player
-        if (!this.menuOpen && !this.dead) this.updateAcceleration();
-        physics.moveEntity(this, world);
+        if (!this.menuOpen && !this.dead) this.updateAcceleration(deltaScale);
+        physics.moveEntity(this, world, deltaScale);
 
         if (!this.dead) {
             this.updateBody();
-            this.interact(world);
+            this.interact(world, deltaScale);
             this.updateVitals();
         }
 
-        this.inventory.update(canvas);
+        this.inventory.update(canvas, deltaScale);
 
         const keys = inputs.keys;
 
@@ -114,9 +114,9 @@ export default class Player {
         if (this.vitals.health == 0) this.dead = true;
     }
 
-    interact(world) {
-        if (this.attackReload > 0) this.attackReload--;
-        if (this.interactReload > 0) this.interactReload--;
+    interact(world, deltaScale = 1) {
+        if (this.attackReload > 0) this.attackReload = Math.max(0, this.attackReload - deltaScale);
+        if (this.interactReload > 0) this.interactReload = Math.max(0, this.interactReload - deltaScale);
 
         if (this.inventory.open) return;
 
@@ -139,7 +139,7 @@ export default class Player {
 
         //interact with the world
         if (this.inputs.mouse.buttons[0] && this.attackReload <= 0) {
-            const destroyed = world.breakBlock(hit, this);
+            const destroyed = world.breakBlock(hit, this, deltaScale);
             if (destroyed) this.attackReload = 10;
         }
         if (this.inputs.mouse.buttons[2] && this.interactReload <= 0) {
@@ -153,7 +153,7 @@ export default class Player {
         if (this.inventory.open) this.inventory.open = false;
     }
 
-    updateAcceleration() {
+    updateAcceleration(deltaScale = 1) {
         const keys = this.inputs.keys;
         const movementSpeed = keys['shift'] ? 0.0125 : keys['q'] ? 0.0325 : 0.02;
 
@@ -178,18 +178,18 @@ export default class Player {
         if (target[0] !== 0 || target[2] !== 0) {
             // Normalize direction in XZ plane
             const length = Math.hypot(target[0], target[2]);
-            accel[0] += (target[0] / length) * speed;
-            accel[2] += (target[2] / length) * speed;
+            accel[0] += (target[0] / length) * speed * deltaScale;
+            accel[2] += (target[2] / length) * speed * deltaScale;
         }
 
         // jumping
-        if (keys[' '] && this.onBlock) accel[1] += 0.2;
+        if (keys[' '] && this.onBlock) accel[1] += 0.2 * deltaScale;
 
         // flight
         const flightEnabled = this.mode == 'creative';
         if (flightEnabled) {
-            if (keys[' ']) accel[1] += 0.01
-            if (keys['shift']) accel[1] -= 0.01;
+            if (keys[' ']) accel[1] += 0.01 * deltaScale;
+            if (keys['shift']) accel[1] -= 0.01 * deltaScale;
         }
 
         //accelerate player

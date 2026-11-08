@@ -97,7 +97,7 @@ export default class Inventory {
         ctx.fillText(item.amount, x + this.SLOT_SIZE * 0.4 - 5, y + this.SLOT_SIZE * 0.4);
     }
 
-    update(canvas) {
+    update(canvas, deltaScale = 1) {
         //swap with keys
         for (let i = 0; i < this.WIDTH; i++) {
             const key = (i + 1).toString();
@@ -122,8 +122,9 @@ export default class Inventory {
         this.items = this.items.filter(a => !a.delete && a.amount > 0);
 
         //update animation
-        if (this.open) this.openAnimation = Math.min(this.openAnimation + 5, 100);
-        else this.openAnimation = Math.max(this.openAnimation - 5, 0);
+        const animationStep = 5 * deltaScale;
+        if (this.open) this.openAnimation = Math.min(this.openAnimation + animationStep, 100);
+        else this.openAnimation = Math.max(this.openAnimation - animationStep, 0);
     }
 
     getMouseHoveredSlot(canvas) {

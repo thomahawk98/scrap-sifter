@@ -3,15 +3,21 @@ export default class PlayerMovementTracker {
         this.player = player;
         this.world = world;
 
-        this.prevPlayerPos = player.pos;
+        this.prevChunkPos = world.getChunkCoords(...player.pos);
         this.playerCrossedChunkBorder = false;
     }
 
     update() {
         const chunkPos = this.world.getChunkCoords(...this.player.pos);
-        const prevChunkPos = this.world.getChunkCoords(...this.prevPlayerPos);
+        if (chunkPos.some((coordinate, axis) => coordinate !== this.prevChunkPos[axis])) {
+            this.playerCrossedChunkBorder = true;
+            this.prevChunkPos = chunkPos;
+        }
+    }
 
-        this.playerCrossedChunkBorder = JSON.stringify(chunkPos) !== JSON.stringify(prevChunkPos);
-        this.prevPlayerPos = this.player.pos;
+    consumeChunkBorderCrossing() {
+        const crossed = this.playerCrossedChunkBorder;
+        this.playerCrossedChunkBorder = false;
+        return crossed;
     }
 }

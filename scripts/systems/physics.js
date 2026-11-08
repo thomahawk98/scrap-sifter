@@ -1,14 +1,14 @@
 const Physics = {
     GRAVITY: 0.0125,
-    moveEntity(entity, world) {
+    moveEntity(entity, world, deltaScale = 1) {
         // accelerate entity due to gravity
         if (entity.type !== 'player' || entity.mode !== 'creative') {
-            entity.velocity[1] -= this.GRAVITY;
+            entity.velocity[1] -= this.GRAVITY * deltaScale;
         }
 
         // move the entity
         for (let a = 0; a < 3; a++) {
-            this.tryToMove(entity, a, world);
+            this.tryToMove(entity, a, world, deltaScale);
         }
 
         // damp velocity
@@ -17,12 +17,12 @@ const Physics = {
 
         const surfaceDamping = 1 - surfaceFriction;
         const fluidDamping = 1 - fluidFriction;
-        const damping = surfaceDamping * fluidDamping;
+        const damping = Math.pow(surfaceDamping * fluidDamping, deltaScale);
 
         entity.velocity = entity.velocity.map(a => a * damping);
     },
-    tryToMove(entity, axis, world) {
-        const speed = entity.velocity[axis];
+    tryToMove(entity, axis, world, deltaScale = 1) {
+        const speed = entity.velocity[axis] * deltaScale;
         if (speed == 0) return;
 
         // find the new position

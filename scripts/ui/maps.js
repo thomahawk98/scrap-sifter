@@ -1,6 +1,14 @@
 import { getBlockFaceColor } from '../core/block-stats.js';
 import terrain from '../core/terrain.js';
 import biomes from '../core/biomes.js';
+
+const CHUNK_MAP_STATUSES = {
+    generating: { color: [168, 85, 247], label: 'Generating data' },
+    missing: { color: [110, 116, 128], label: 'No block data' },
+    meshPending: { color: [56, 189, 248], label: 'Active, mesh pending' },
+    meshReady: { color: [34, 197, 94], label: 'Active, mesh ready' },
+    cached: { color: [245, 158, 11], label: 'Cached data' },
+};
 class EnvironmentMap {
     constructor(width = 128, height = 128) {
         this.canvas = document.createElement("canvas");
@@ -122,6 +130,12 @@ export class ChunkMap extends EnvironmentMap {
         super(width, height);
         this.pixelSize = 16; // chunk size, 1 pixel per block
         this.type = 'chunk status';
+        this.isChunkMap = true;
+    }
+
+    uploadData(position, world) {
+        super.uploadData(position, world);
+        this.drawLegend();
     }
 
     getData(world) {
@@ -140,11 +154,42 @@ export class ChunkMap extends EnvironmentMap {
     }
 
     getPixelColor(chunk) {
-        const alpha = chunk.empty ? 0.25 : 1;
-        if (chunk.dataStatus === 'generating') return `rgba(100,0,255,${alpha})`;
-        if (chunk.dataStatus !== 'ready') return `rgba(255,0,255,${alpha})`;
-        if (chunk.residency !== 'active') return `rgba(100,200,0,${alpha})`;
-        if (chunk.meshStatus === 'ready') return `rgba(0,255,0,${alpha})`;
-        return `rgba(0,100,200,${alpha})`;
+        const status = this.getChunkStatus(chunk);
+        const [r, g, b] = status.color;
+        const alpha = chunk.empty ? 0.35 : 1;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    getChunkStatus(chunk) {
+        // Show the furthest useful pipeline milestone while keeping data
+        // readiness, mesh readiness, and residency visibly distinct.
+        if (chunk.dataStatus === 'generating') return CHUNK_MAP_STATUSES.generating;
+        if (chunk.dataStatus !== 'ready') return CHUNK_MAP_STATUSES.missing;
+        if (chunk.residency !== 'active') return CHUNK_MAP_STATUSES.cached;
+        if (chunk.meshStatus === 'ready') return CHUNK_MAP_STATUSES.meshReady;
+        return CHUNK_MAP_STATUSES.meshPending;
+    }
+
+    drawLegend() {
+        const ctx = this.ctx;
+        const entries = Object.values(CHUNK_MAP_STATUSES);
+        const panel = { x: 8, y: 8, width: 272, height: 190 };
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+        ctx.fillRect(panel.x, panel.y, panel.width, panel.height);
+        ctx.font = 'bold 22px Tahoma';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'white';
+        ctx.fillText('Chunk pipeline', panel.x + 12, panel.y + 19);
+
+        entries.forEach((entry, index) => {
+            const y = panel.y + 48 + index * 27;
+            ctx.fillStyle = `rgb(${entry.color.join(',')})`;
+            ctx.fillRect(panel.x + 12, y - 8, 16, 16);
+            ctx.fillStyle = 'white';
+            ctx.fillText(entry.label, panel.x + 38, y);
+        });
+        ctx.restore();
     }
 }

@@ -17,11 +17,11 @@ export default class World {
         this.update();
     }
 
-    update() {
-        this.time++;
+    update(deltaSeconds = 1 / 60) {
+        this.time += deltaSeconds;
 
         // update daylight
-        const frequency = this.DAY_LENGTH_SECONDS * 60; // 60 fps
+        const frequency = this.DAY_LENGTH_SECONDS;
         const amplitude = this.BRIGHTNESS_AT_NOON;
         const light = amplitude * Math.sin(this.time * Math.PI / frequency);
         this.daylight = light;
@@ -107,11 +107,11 @@ export default class World {
         return success;
     };
 
-    breakBlock(hit, player) {
+    breakBlock(hit, player, deltaScale = 1) {
         const block = this.getBlock(...hit.position);
         if (!block) return console.log('no block found at', hit.position);
 
-        player.outlinedBlock.health--;
+        player.outlinedBlock.health -= deltaScale;
         if (player.outlinedBlock.health > 0) return false; // still breaking, don't delete yet
 
         this.setBlock(...hit.position, { type: 'air' });

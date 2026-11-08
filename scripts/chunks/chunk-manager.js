@@ -43,11 +43,13 @@ export default class ChunkManager {
         }
     }
 
-    update(player, renderer, crossed) {
+    update(player, renderer, crossed, deltaScale = 1) {
         if (crossed || !this.hasActiveChunks()) this.evaluateChunks(player, renderer);
         this.addDirtyChunksToQueue();
-        this.updateQueue(player, renderer, 5);
-        for (const chunk of this.chunks.values()) if (chunk.fade < chunk.maxFade) chunk.fade++;
+        this.updateQueue(player, renderer, 4);
+        for (const chunk of this.chunks.values()) {
+            chunk.fade = Math.min(chunk.maxFade, chunk.fade + deltaScale);
+        }
     }
 
     hasActiveChunks() {
@@ -77,10 +79,11 @@ export default class ChunkManager {
         }
     }
 
-    updateQueue(player, renderer, maxChunksPerFrame = 1) {
+    updateQueue(player, renderer, timeBudgetMs = 4) {
         this.sortQueue(player);
         let count = 0;
-        while (this.dirtyChunkQueue.length && count < maxChunksPerFrame) {
+        const startTime = performance.now();
+        while (this.dirtyChunkQueue.length && (count === 0 || performance.now() - startTime < timeBudgetMs)) {
             const chunk = this.dirtyChunkQueue.shift();
             this.queuedChunks.delete(chunk);
             if (this.chunks.get(this.world.getChunkKey(chunk.cx, chunk.cy, chunk.cz)) !== chunk ||

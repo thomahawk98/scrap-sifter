@@ -7,6 +7,7 @@ import ChunkManager from './chunks/chunk-manager.js';
 
 import Player from './entities/player.js';
 import PlayerMovementTracker from './systems/player-movement-tracker.js';
+import FPSTracker from './systems/fps-tracker.js';
 
 import Camera from './render/camera.js';
 import Renderer from './render/renderer.js';
@@ -164,39 +165,49 @@ document.addEventListener('mouseup', e => {
     mouse.buttons[e.button] = false;
 });
 
-var fps = 0;
-function updateFPS() {
-    const now = performance.now();
-    if (!window.lastUpdateTime) window.lastUpdateTime = now;
+const fpsTracker = new FPSTracker();
+const FIXED_STEP_SECONDS = 1 / 60;
+const MAX_FRAME_SECONDS = 0.1;
+const MAX_SIMULATION_STEPS = 5;
+let previousFrameTime = null;
+let simulationAccumulator = 0;
+let lastChunkMapRefresh = 0;
 
-    const deltaTime = (now - window.lastUpdateTime) / 1000; //  convert to seconds
-    window.lastUpdateTime = now;
-    fps = Math.round(1 / deltaTime);
-    fps = Math.clamp(fps, 0, 60);
-}
+function main(timestamp) {
+    fpsTracker.update(timestamp);
+    const elapsedSeconds = previousFrameTime === null ? 0 : (timestamp - previousFrameTime) / 1000;
+    previousFrameTime = timestamp;
+    // Ignore long stalls and cap catch-up work so a slow frame cannot trigger
+    // an unbounded burst of simulation updates on the next frame.
+    const frameSeconds = Math.min(elapsedSeconds, MAX_FRAME_SECONDS);
 
-function main() {
-
-    //generate terrain when ChunkGenerator is done generating
-    updateFPS();
-
-    //update player and camera
     if (!paused) {
-        world.update();
-        player.update({ keys, mouse }, world, hud.canvas);
-        playerTracker.update();
-        camera.update();
+        simulationAccumulator += frameSeconds;
+        let steps = 0;
+        while (simulationAccumulator >= FIXED_STEP_SECONDS && steps < MAX_SIMULATION_STEPS) {
+            world.update(FIXED_STEP_SECONDS);
+            player.update({ keys, mouse }, world, hud.canvas, FIXED_STEP_SECONDS * 60);
+            playerTracker.update();
+            camera.update();
+            simulationAccumulator -= FIXED_STEP_SECONDS;
+            steps++;
+        }
+        // Drop excess accumulated time rather than spiraling into more catch-up.
+        if (steps === MAX_SIMULATION_STEPS) simulationAccumulator = Math.min(simulationAccumulator, FIXED_STEP_SECONDS);
+    } else {
+        simulationAccumulator = 0;
     }
 
-    // evaluate chunks if player crossed a chunk boundary
-    const crossed = playerTracker.playerCrossedChunkBorder;
-    chunkManager.update(player, renderer, crossed);
+    const crossed = playerTracker.consumeChunkBorderCrossing();
+    chunkManager.update(player, renderer, crossed, frameSeconds * 60);
 
     //rewrite maps
+    const refreshChunkMap = timestamp - lastChunkMapRefresh >= 100;
     for (const map of hud.maps) {
-        const rewrite = crossed || map.type == 'chunk status';
+        const rewrite = crossed || (map.isChunkMap && refreshChunkMap);
         if (rewrite) map.uploadData(player.pos, world);
     }
+    if (refreshChunkMap) lastChunkMapRefresh = timestamp;
 
     //render the world (from camera POV)
     renderer.render(world, camera, player);
@@ -205,7 +216,7 @@ function main() {
     const biome = terrain.getBiomeAt(player.pos[0], player.pos[2], world.seed);
     const debugTexts = [
         `${Math.round(player.pos[0])}, ${Math.round(player.pos[1])}, ${Math.round(player.pos[2])}`,
-        `FPS: ${fps}`, `Mode: ${player.mode}`, `On block: ${player.onBlock}`, '',
+        `FPS: ${fpsTracker.fps}`, `Mode: ${player.mode}`, `On block: ${player.onBlock}`, '',
         `FOV: ${camera.fov}`, `Yaw: ${Math.round(camera.yaw * 100) / 100}`, `Pitch: ${Math.round(camera.pitch * 100) / 100}`, '',
         `Biome: ${biome.name}`, `Seed: ${world.seed}`, `Render Distance: ${world.renderDistance}`, '',
         `Resident Chunks: ${world.chunks.size}`, `Active Chunks: ${chunkManager.getActiveChunkCount()}`,
@@ -215,5 +226,5 @@ function main() {
 
     requestAnimationFrame(main);
 }
-main();
+requestAnimationFrame(main);
 
