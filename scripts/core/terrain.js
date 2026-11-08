@@ -116,8 +116,13 @@ const Terrain = {
         }
     },
     getHeightAt: function (x, z, seed) {
-        return noise(x * 0.001, seed, z * 0.001) * 500;
+        //return noise(x * 0.001, seed, z * 0.001) * 500; // simple height function
 
+        //ant colony:
+        const noiseValue = noise(x * 0.1, seed, z * 0.1);
+        return (noiseValue < 0.6 && noiseValue > 0.4) ? 0 : 5;
+
+        /*
         const continentalness = noise(x * 0.005, seed, z * 0.005);
         const erosion = noise(x * 0.001, seed, z * 0.001);
         const peaksAndValleys = this.getPeaksAndValleys(x, z, seed);
@@ -125,6 +130,7 @@ const Terrain = {
         const height = continentalness * erosion * peaksAndValleys;
 
         return peaksAndValleys * 50;//height * 100;
+        */
     },
     getPeaksAndValleys(x, z, seed) {
         let height = 0;
@@ -141,15 +147,48 @@ const Terrain = {
 
         return height;
     },
+
     getSolidityAt: function (x, y, z, seed, generateCaves = false) {
-        //if (x > 0) return false; // generate a cross section
-        
-        // how randomly tall the terrain will generate (change this to be passed in later, for now just set it proportional to distance on x and z axes)
-        const WEIRDNESS = 1 + 0.1 * (Math.abs(x) + Math.abs(z));
+        //if (x > 0) return false; // generate a cross section for debugging
+
+        // how much 3d noise the terrain will have
+        const WEIRDNESS = 0//this.getWeirdnessAt(x, z, seed);
 
         // generate 3d noise
-        const octaves = 3;
-        const baseFrequency = 0.025;
+        const density = this.generate3dNoiseValue(x, y, z, seed);
+        // DENSITY: 0 = no block generation, 1 = full block generation, 0.5 = roughly 50% block generation
+        
+
+        // add 3d noise on top of a 2d noise layer
+        const surfaceHeight = this.getHeightAt(x, z, seed);
+        // centered at surfaceY to avoid just adding noise on top of the surface
+        // (and so getHeightAt remains roughly consistent with the actual surface)
+        const heightFromSurface = y - surfaceHeight;
+        // adjust the solidity threshold based on the height from the surface, proportional to the weirdness
+        const solidityThreshold = 0.5 - heightFromSurface / WEIRDNESS;
+
+        // determine if a block is there
+        const solid = density < solidityThreshold;
+
+        // generate caves if requested
+        if (generateCaves) {
+            if (!solid) return false; // preliminary check before generating caves
+            const cave = this.getCaveAt(x, y, z, seed);
+            if (cave) return false;
+        }
+
+        return solid;
+    },
+
+    getWeirdnessAt: function (x, z, seed) {
+        return 1 + 0.1 * (Math.abs(x) + Math.abs(z));
+    },
+
+    generate3dNoiseValue: function (x, y, z, seed, octaves = 3, baseFrequency = 0.025) {
+        // octaves = how many layers of detail
+        // baseFrequency = how "zoomed in" the noise is
+
+        // generate the 3d noise value based on the given octaves and base frequency
         let noiseValue = 0;
         for (let n = 0; n < octaves; n++) {
             const frequency = baseFrequency * 2 ** n;
@@ -158,25 +197,13 @@ const Terrain = {
             noiseValue += noise(x * frequency + seed * 76564, y * frequency + seed * 724984, z * frequency + seed * 312844) * amplitude;
         }
 
-        // bring the noise value back between 1 and 0
+        // bring the noise value back between 1 and 0 after adding octaves
         const maxAmplitude = 2 * (1 - 0.5 ** octaves);
         noiseValue /= maxAmplitude;
+        return noiseValue;
+    },
 
-        // 0 density = no block generation
-        // 1 density = full block generation
-        // 0.5 density = roughly half block generation (should be centered at serfaceY to avoid ever increasing mountains)
-
-        // add 3d noise on top of a 2d noise layer
-        const surfaceHeight = this.getHeightAt(x, z, seed);
-        const heightFromSurface = y - surfaceHeight;
-        const solidityThreshold = 0.5 - heightFromSurface / WEIRDNESS;
-
-        // determine if a block is there
-        const solid = noiseValue < solidityThreshold;
-        if (!generateCaves) return solid;
-
-        if (!solid) return false;
-
+    getCaveAt: function (x, y, z, seed) {
         // generate caverns
         const cavernDensity = Math.clamp((heightFromSurface + 100) * 0.01, 0.6, 1);
         const cavernNoiseValue = noise(x * 0.1 + seed * 58464, y * 0.1 + seed * 79284, z * 0.1 + seed * 304);
@@ -188,8 +215,9 @@ const Terrain = {
         const noodleCave = Math.abs(noodleCaveNoiseValue - 0.5) * 2 < 0.01;
         if (noodleCave) return false;
 
-        return solid;
+        return true;
     },
+
     getTypeAt: function (x, y, z, seed) {
         const height = this.getHeightAt(x, z, seed);
         return y < height ? 'stone' : 'air';
