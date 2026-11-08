@@ -5,6 +5,7 @@ export default class ChunkGenerator {
         this.requestQueue = new Map();
         this.isBusy = false;
         this.inFlight = null;
+        this.playerPosition = null;
         this.worker = new Worker(new URL('./chunk-generator-worker.js', import.meta.url), { type: 'module' });
         this.worker.onerror = console.error;
         this.worker.onmessageerror = console.error;
@@ -13,36 +14,76 @@ export default class ChunkGenerator {
             this.manager.receiveGeneratedChunk(data, this.inFlight);
             this.inFlight = null;
             this.isBusy = false;
-            this.feedWorkerNewRequest();
+            this.processNextRequest();
         };
     }
 
-    requestNewChunk(cx, cy, cz, priority = 1) {
+    setPlayerPosition(position) {
+        this.playerPosition = position;
+    }
+
+    requestNewChunk(cx, cy, cz) {
         const key = this.world.getChunkKey(cx, cy, cz);
         const chunk = this.manager.createChunk(cx, cy, cz);
-        // Coalesce queued requests and raise their priority instead of sending
-        // duplicate generation work to the worker.
-        const request = this.requestQueue.get(key);
-        if (request) {
-            request.priority += priority;
-            return chunk;
-        }
+        if (this.requestQueue.has(key)) return chunk;
         if (chunk.dataStatus === 'ready' || chunk.dataStatus === 'generating') return chunk;
-        this.requestQueue.set(key, { key, chunk, priority });
+        // Leave requests queued until the manager has collected the whole
+        // neighborhood, so the first worker job can be the nearest one.
+        this.requestQueue.set(key, { key, chunk });
         chunk.dataStatus = 'generating';
-        if (!this.isBusy) this.feedWorkerNewRequest();
         return chunk;
     }
 
-    feedWorkerNewRequest() {
-        if (!this.requestQueue.size) return;
-        let request = null;
-        for (const candidate of this.requestQueue.values()) {
-            if (!request || candidate.priority > request.priority) request = candidate;
+    pruneOutsideRenderDistance(position, renderDistance) {
+        for (const [key, request] of this.requestQueue) {
+            if (this.isWithinDistance(request.chunk, position, renderDistance)) continue;
+            this.requestQueue.delete(key);
+            request.chunk.dataStatus = 'missing';
         }
-        this.requestQueue.delete(request.key);
-        this.inFlight = { key: request.key, chunk: request.chunk, revision: request.chunk.revision };
+    }
+
+    isWithinDistance(chunk, position, renderDistance) {
+        const dx = chunk.cx - position[0];
+        const dy = chunk.cy - position[1];
+        const dz = chunk.cz - position[2];
+        return dx * dx + dy * dy + dz * dz <= renderDistance * renderDistance;
+    }
+
+    processNextRequest() {
+        if (this.isBusy || !this.requestQueue.size || !this.playerPosition) return;
+
+        // Recheck before dispatch because the player may have moved while this
+        // request waited behind another generation job.
+        const playerChunkPosition = this.world.getChunkCoords(...this.playerPosition);
+        this.pruneOutsideRenderDistance(playerChunkPosition, this.world.renderDistance);
+        if (!this.requestQueue.size) return;
+
+        let nearestRequest = null;
+        let nearestDistance = Infinity;
+        for (const request of this.requestQueue.values()) {
+            // Compare chunk centers in world coordinates, so requests are
+            // ordered by their actual distance from the player's position.
+            const dx = request.chunk.cx * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - this.playerPosition[0];
+            const dy = request.chunk.cy * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - this.playerPosition[1];
+            const dz = request.chunk.cz * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - this.playerPosition[2];
+            const distance = dx * dx + dy * dy + dz * dz;
+            if (distance < nearestDistance) {
+                nearestRequest = request;
+                nearestDistance = distance;
+            }
+        }
+        if (!nearestRequest) return;
+
+        this.requestQueue.delete(nearestRequest.key);
+        this.inFlight = {
+            key: nearestRequest.key,
+            chunk: nearestRequest.chunk,
+            revision: nearestRequest.chunk.revision,
+        };
         this.isBusy = true;
-        this.worker.postMessage({ chunkPos: [request.chunk.cx, request.chunk.cy, request.chunk.cz], seed: this.world.seed });
+        this.worker.postMessage({
+            chunkPos: [nearestRequest.chunk.cx, nearestRequest.chunk.cy, nearestRequest.chunk.cz],
+            seed: this.world.seed,
+        });
     }
 }

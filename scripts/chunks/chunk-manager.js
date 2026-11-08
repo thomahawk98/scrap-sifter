@@ -44,11 +44,29 @@ export default class ChunkManager {
     }
 
     update(player, renderer, crossed, deltaScale = 1) {
+        const playerChunkPosition = this.world.getChunkCoords(...player.pos);
+        this.generator.setPlayerPosition(player.pos);
+        this.pruneUnneededGeneration(playerChunkPosition);
         if (crossed || !this.hasActiveChunks()) this.evaluateChunks(player, renderer);
+        this.generator.processNextRequest();
         this.addDirtyChunksToQueue();
         this.updateQueue(player, renderer, 4);
         for (const chunk of this.chunks.values()) {
             chunk.fade = Math.min(chunk.maxFade, chunk.fade + deltaScale);
+        }
+    }
+
+    pruneUnneededGeneration(playerChunkPosition) {
+        const renderDistance = this.world.renderDistance;
+        this.generator.pruneOutsideRenderDistance(playerChunkPosition, renderDistance);
+
+        // A queued or in-flight chunk without block data has no value outside
+        // the render range. Removing it also makes late worker replies stale.
+        for (const [key, chunk] of this.chunks) {
+            if (chunk.dataStatus === 'ready' || this.isChunkInThreshold(
+                [chunk.cx, chunk.cy, chunk.cz], playerChunkPosition, renderDistance
+            )) continue;
+            this.chunks.delete(key);
         }
     }
 
@@ -111,7 +129,7 @@ export default class ChunkManager {
     evaluateChunks(player, renderer) {
         const pos = this.world.getChunkCoords(...player.pos);
         const threshold = this.world.renderDistance;
-        this.generateNewChunks(pos, threshold + 1);
+        this.generateNewChunks(pos, threshold);
         this.updateResidency(pos, threshold, renderer);
     }
 
