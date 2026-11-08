@@ -36,6 +36,11 @@ export default class ChunkManager {
         this.invalidateNeighbors(chunk);
     }
 
+    failGenerationRequest(request) {
+        const chunk = this.chunks.get(request.key);
+        if (chunk === request.chunk && chunk.dataStatus === 'generating') chunk.dataStatus = 'missing';
+    }
+
     invalidateNeighbors(chunk) {
         for (const [dx, dy, dz] of [[-1,0,0],[1,0,0],[0,-1,0],[0,1,0],[0,0,-1],[0,0,1]]) {
             const neighbor = this.getChunk(chunk.cx + dx, chunk.cy + dy, chunk.cz + dz);
@@ -48,11 +53,14 @@ export default class ChunkManager {
         this.generator.setPlayerPosition(player.pos);
         this.pruneUnneededGeneration(playerChunkPosition);
         if (crossed || !this.hasActiveChunks()) this.evaluateChunks(player, renderer);
-        this.generator.processNextRequest();
+        this.generator.processNextRequests();
         this.addDirtyChunksToQueue();
         this.updateQueue(player, renderer, 4);
         for (const chunk of this.chunks.values()) {
             chunk.fade = Math.min(chunk.maxFade, chunk.fade + deltaScale);
+            if (chunk.residency === 'active' && chunk.dataStatus === 'missing') {
+                this.generator.requestNewChunk(chunk.cx, chunk.cy, chunk.cz);
+            }
         }
     }
 

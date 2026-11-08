@@ -87,7 +87,7 @@ document.addEventListener('keydown', e => {
     //adjust render distance
     if (keys['-']) world.renderDistance--;
     if (keys['=']) world.renderDistance++;
-    world.renderDistance = Math.clamp(world.renderDistance, 2, 8);
+    world.renderDistance = Math.clamp(world.renderDistance, 2, 12);
 
     //reset all chunks
     if (keys['backspace']) {
@@ -220,7 +220,7 @@ function main(timestamp) {
         `FOV: ${camera.fov}`, `Yaw: ${Math.round(camera.yaw * 100) / 100}`, `Pitch: ${Math.round(camera.pitch * 100) / 100}`, '',
         `Biome: ${biome.name}`, `Seed: ${world.seed}`, `Render Distance: ${world.renderDistance}`, '',
         `Resident Chunks: ${world.chunks.size}`, `Active Chunks: ${chunkManager.getActiveChunkCount()}`,
-        `Unmeshed Chunks: ${chunkManager.dirtyChunkQueue.length}`, `Ungenerated Chunks: ${chunkManager.generator.requestQueue.size}`,
+        `Unmeshed Chunks: ${chunkManager.dirtyChunkQueue.length}`, `Ungenerated Chunks: ${chunkManager.generator.getPendingCount()}`,
     ];
     hud.draw(paused, debugTexts, player, { keys, mouse });
 

@@ -1,25 +1,33 @@
 export default class ChunkGenerator {
-    constructor(manager) {
+    constructor(manager, { workerCount = 2, batchSize = 4 } = {}) {
         this.manager = manager;
         this.world = manager.world;
         this.requestQueue = new Map();
-        this.isBusy = false;
-        this.inFlight = null;
+        this.batchSize = batchSize;
         this.playerPosition = null;
-        this.worker = new Worker(new URL('./chunk-generator-worker.js', import.meta.url), { type: 'module' });
-        this.worker.onerror = console.error;
-        this.worker.onmessageerror = console.error;
-        this.worker.onmessage = ({ data }) => {
-            // The manager validates the response and attaches data to its chunk.
-            this.manager.receiveGeneratedChunk(data, this.inFlight);
-            this.inFlight = null;
-            this.isBusy = false;
-            this.processNextRequest();
-        };
+        // Keep worker state in slots so concurrency can grow without adding
+        // separate worker properties or dispatch paths.
+        this.workers = Array.from({ length: workerCount }, () => {
+            const slot = {
+                worker: new Worker(new URL('./chunk-generator-worker.js', import.meta.url), { type: 'module' }),
+                busy: false,
+                batch: null,
+            };
+            slot.worker.onmessage = ({ data }) => this.handleWorkerMessage(slot, data);
+            slot.worker.onerror = event => this.handleWorkerError(slot, event);
+            slot.worker.onmessageerror = event => this.handleWorkerError(slot, event);
+            return slot;
+        });
     }
 
     setPlayerPosition(position) {
         this.playerPosition = position;
+    }
+
+    getPendingCount() {
+        return this.requestQueue.size + this.workers.reduce(
+            (count, slot) => count + (slot.batch?.length ?? 0), 0
+        );
     }
 
     requestNewChunk(cx, cy, cz) {
@@ -29,7 +37,7 @@ export default class ChunkGenerator {
         if (chunk.dataStatus === 'ready' || chunk.dataStatus === 'generating') return chunk;
         // Leave requests queued until the manager has collected the whole
         // neighborhood, so the first worker job can be the nearest one.
-        this.requestQueue.set(key, { key, chunk });
+        this.requestQueue.set(key, { key, chunk, revision: chunk.revision });
         chunk.dataStatus = 'generating';
         return chunk;
     }
@@ -49,41 +57,71 @@ export default class ChunkGenerator {
         return dx * dx + dy * dy + dz * dz <= renderDistance * renderDistance;
     }
 
-    processNextRequest() {
-        if (this.isBusy || !this.requestQueue.size || !this.playerPosition) return;
+    processNextRequests() {
+        if (!this.requestQueue.size || !this.playerPosition) return;
 
-        // Recheck before dispatch because the player may have moved while this
-        // request waited behind another generation job.
+        // Recheck before dispatch because the player may have moved while these
+        // requests waited for an available worker.
         const playerChunkPosition = this.world.getChunkCoords(...this.playerPosition);
         this.pruneOutsideRenderDistance(playerChunkPosition, this.world.renderDistance);
         if (!this.requestQueue.size) return;
 
-        let nearestRequest = null;
-        let nearestDistance = Infinity;
-        for (const request of this.requestQueue.values()) {
-            // Compare chunk centers in world coordinates, so requests are
-            // ordered by their actual distance from the player's position.
-            const dx = request.chunk.cx * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - this.playerPosition[0];
-            const dy = request.chunk.cy * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - this.playerPosition[1];
-            const dz = request.chunk.cz * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - this.playerPosition[2];
-            const distance = dx * dx + dy * dy + dz * dz;
-            if (distance < nearestDistance) {
-                nearestRequest = request;
-                nearestDistance = distance;
-            }
-        }
-        if (!nearestRequest) return;
+        for (const slot of this.workers) {
+            if (slot.busy || !this.requestQueue.size) continue;
+            const batch = this.takeNearestBatch();
+            if (!batch.length) break;
 
-        this.requestQueue.delete(nearestRequest.key);
-        this.inFlight = {
-            key: nearestRequest.key,
-            chunk: nearestRequest.chunk,
-            revision: nearestRequest.chunk.revision,
-        };
-        this.isBusy = true;
-        this.worker.postMessage({
-            chunkPos: [nearestRequest.chunk.cx, nearestRequest.chunk.cy, nearestRequest.chunk.cz],
-            seed: this.world.seed,
-        });
+            slot.busy = true;
+            slot.batch = batch;
+            slot.worker.postMessage({
+                chunkPositions: batch.map(request => [request.chunk.cx, request.chunk.cy, request.chunk.cz]),
+                seed: this.world.seed,
+            });
+        }
+    }
+
+    takeNearestBatch() {
+        // Each batch begins with the closest chunk, then takes the next closest
+        // remaining requests for better locality and fewer worker round trips.
+        const rankedRequests = [...this.requestQueue.values()].sort((a, b) =>
+            this.getDistanceSquared(a.chunk) - this.getDistanceSquared(b.chunk)
+        );
+        const batch = rankedRequests.slice(0, this.batchSize);
+        for (const request of batch) this.requestQueue.delete(request.key);
+        return batch;
+    }
+
+    getDistanceSquared(chunk) {
+        const dx = chunk.cx * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - this.playerPosition[0];
+        const dy = chunk.cy * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - this.playerPosition[1];
+        const dz = chunk.cz * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - this.playerPosition[2];
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    handleWorkerMessage(slot, data) {
+        const batch = slot.batch ?? [];
+        const generatedChunks = new Map((data.chunks ?? []).map(chunk => [
+            this.world.getChunkKey(...chunk.chunkPos), chunk,
+        ]));
+
+        // Apply each result independently: a chunk may have left render range
+        // or been replaced while the rest of its batch was still generating.
+        for (const request of batch) {
+            const generatedChunk = generatedChunks.get(request.key);
+            if (generatedChunk) this.manager.receiveGeneratedChunk(generatedChunk, request);
+            else this.manager.failGenerationRequest(request);
+        }
+
+        slot.batch = null;
+        slot.busy = false;
+        this.processNextRequests();
+    }
+
+    handleWorkerError(slot, error) {
+        console.error(error);
+        for (const request of slot.batch ?? []) this.manager.failGenerationRequest(request);
+        slot.batch = null;
+        slot.busy = false;
+        this.processNextRequests();
     }
 }

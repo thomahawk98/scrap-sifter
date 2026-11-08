@@ -2,14 +2,13 @@
 import terrain from '../core/terrain.js';
 
 self.onmessage = (event) => {
-    //console.log('message recieved!');
-    const data = generateChunkVoxels(event.data);
-    self.postMessage(data, [data.voxels.buffer]);
-    //console.log('sending reply...');
+    const { chunkPositions, seed } = event.data;
+    const chunks = chunkPositions.map(chunkPos => generateChunkVoxels(chunkPos, seed));
+    const transferables = chunks.map(chunk => chunk.voxels.buffer);
+    self.postMessage({ chunks }, transferables);
 }
 
-function generateChunkVoxels(message) {
-    const { chunkPos, seed } = message;
+function generateChunkVoxels(chunkPos, seed) {
     const CHUNK_SIZE = 16;
 
     const data = {
