@@ -2,10 +2,7 @@ ADD:
 menu
 inputs file
 
-DONE camera f5 scrolling
-DONE fog
-DONE depth shader
-N/A simplistic chunk edge geometry
+simplistic chunk edge geometry to render far away chunks?
 
 weather
 water
@@ -26,13 +23,13 @@ hunger
 temperature
 items
 
-DONE day / night cycle
-sun / stars
+sun / stars / moon
 lighting map (light sources)
 
+I think the ENTIRE chunk system needs a redo tbh
 chunk compression time out (proportional to amount of time spent in chunk)
 world files / downloads
-dirty chunk culling (out of player render distance)
+dirty chunk culling (out of player render distance) PLLLLEEEEASE
 global category variation regions
 
 entity buffers
@@ -42,3 +39,11 @@ player in game (so you can see yourself in f5)
 FIX:
 move all the way bug
 friction in air bug (player.onBlock) (creative mode)
+add more chunk-generation-workers, and make them process chunks in batches
+
+
+DONE:
+DONE day / night cycle
+DONE camera f5 scrolling
+DONE fog
+DONE depth shader
