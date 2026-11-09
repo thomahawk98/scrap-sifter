@@ -22,12 +22,15 @@ export default class World {
 
     update(deltaSeconds = 1 / 60) {
         this.time += deltaSeconds;
+        this.daylight = 1; // always day
 
         // update daylight
+        /*
         const frequency = this.DAY_LENGTH_SECONDS;
         const amplitude = this.BRIGHTNESS_AT_NOON;
         const light = amplitude * Math.sin(this.time * Math.PI / frequency);
         this.daylight = light;
+        */
     }
 
     getChunkKey(cx, cy, cz) {

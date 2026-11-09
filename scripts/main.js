@@ -32,6 +32,17 @@ window.addEventListener('resize', resize);
 //define global elements
 const world = new World();
 
+//test entity (remove later)
+import Entity from './entities/entity.js';
+import { createCubeGeometry } from './core/entity-geometry.js';
+const testEntity = new Entity({
+    geometry: createCubeGeometry([0, 0, 0]),
+    scale: [0.6, 0.6, 0.6],
+    material: { color: [0, 0, 0] }
+});
+testEntity.velocity = [0.5, 0, 0];
+world.entities.add(testEntity);
+
 const player = new Player(world);
 world.entities.add(player);
 const playerTracker = new PlayerMovementTracker(player, world);

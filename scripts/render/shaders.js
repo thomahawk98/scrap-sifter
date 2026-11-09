@@ -27,6 +27,7 @@ varying vec3 vColor;
 varying float vDistance;
 
 uniform float uChunkFade;
+uniform vec3 uMaterialColor;
 
 uniform float uDaylight;
 
@@ -56,7 +57,7 @@ void main() {
     light += max(dot(norm, lightPosZ), 0.0) * 0.6;
     light += max(dot(norm, lightNegZ), 0.0) * 0.55;
 
-    vec3 litColor = vColor * light;
+    vec3 litColor = vColor * uMaterialColor * light;
 
     // Apply fog effect
     float fogFactor = 1.0 - smoothstep(uFogFadeStart, uFogFadeEnd, vDistance);

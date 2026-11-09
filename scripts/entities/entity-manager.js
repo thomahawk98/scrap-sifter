@@ -16,7 +16,8 @@ export default class EntityManager {
     }
 
     update(deltaScale, context) {
-        for (const entity of this.entities.values()) entity.update(deltaScale, context);
+        // New entities created during an update begin moving on the next step.
+        for (const entity of [...this.entities.values()]) entity.update(deltaScale, context);
     }
 
     values() {

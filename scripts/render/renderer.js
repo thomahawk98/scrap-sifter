@@ -84,6 +84,7 @@ export default class Renderer {
         this.worldUniforms = {
             modelViewMatrix: gl.getUniformLocation(this.worldProgram, 'modelViewMatrix'),
             projectionMatrix: gl.getUniformLocation(this.worldProgram, 'projectionMatrix'),
+            materialColor: gl.getUniformLocation(this.worldProgram, 'uMaterialColor'),
 
             uChunkFade: gl.getUniformLocation(this.worldProgram, 'uChunkFade'),
 
@@ -239,6 +240,7 @@ export default class Renderer {
             if (chunk.residency === 'active') this.renderChunk(chunk);
         }
 
+        //render entities
         for (const entity of world.entities.values()) {
             if (entity.visible && entity.geometry) this.renderEntity(entity, view, proj);
         }
@@ -273,6 +275,7 @@ export default class Renderer {
         //set chunk fade
         const fadePercent = chunk.fade / chunk.maxFade;
         gl.uniform1f(this.worldUniforms.uChunkFade, fadePercent);
+        gl.uniform3f(this.worldUniforms.materialColor, 1, 1, 1);
 
         //bind the buffer
         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
@@ -322,6 +325,7 @@ export default class Renderer {
         gl.uniformMatrix4fv(this.worldUniforms.projectionMatrix, false, proj);
         gl.uniformMatrix4fv(this.worldUniforms.modelViewMatrix, false, modelView);
         gl.uniform1f(this.worldUniforms.uChunkFade, 1);
+        gl.uniform3fv(this.worldUniforms.materialColor, entity.material.color || [1, 1, 1]);
         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
         gl.vertexAttribPointer(this.worldAttribs.position, 3, gl.FLOAT, false, stride, 0);
         gl.enableVertexAttribArray(this.worldAttribs.position);

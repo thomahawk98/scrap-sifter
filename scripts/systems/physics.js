@@ -1,5 +1,6 @@
 const Physics = {
     moveEntity(entity, world, deltaScale = 1) {
+        entity.collidedBlock = null;
         // move the entity
         for (let a = 0; a < 3; a++) {
             this.tryToMove(entity, a, world, deltaScale);
@@ -28,6 +29,7 @@ const Physics = {
         const collided = this.getBlockingBlock(world, entityShell, axis, speed, entity.pos);
         if (!collided) entity.pos = newPos; // move allowed
         else {
+            entity.collidedBlock ||= collided;
             entity.velocity[axis] = 0;
 
             // move the entity to the edge of the colliding block
