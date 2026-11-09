@@ -1,13 +1,14 @@
-import FPSTracker from './systems/fps-tracker.js';
+import FPSTracker from './client/systems/fps-tracker.js';
+import Game from './game.js';
 
 const FIXED_STEP_SECONDS = 1 / 60;
 const MAX_FRAME_SECONDS = 0.1;
 const MAX_SIMULATION_STEPS = 5;
 
 // The frame loop owns time only; User bridges each frame to simulation and view.
-export default class GameLoop {
-    constructor(user) {
-        this.user = user;
+class DualUpdateLoop {
+    constructor(game) {
+        this.game = game;
         this.fpsTracker = new FPSTracker();
         this.previousFrameTime = null;
         this.simulationAccumulator = 0;
@@ -28,15 +29,19 @@ export default class GameLoop {
         // unbounded burst of simulation work.
         const frameSeconds = Math.min(elapsedSeconds, MAX_FRAME_SECONDS);
         this.updateSimulation(frameSeconds);
-        this.user.updateChunksAndMaps(timestamp, frameSeconds * 60);
-        this.user.render();
-        this.user.draw(this.fpsTracker.fps);
+        const crossedChunkBorder = this.game.server.updateChunks(this.game.renderer, frameSeconds * 60);
+        for (const user of this.game.users) {
+            user.updateMaps(timestamp, crossedChunkBorder);
+            user.render();
+            user.draw(this.fpsTracker.fps);
+        }
 
         requestAnimationFrame(nextTimestamp => this.frame(nextTimestamp));
     }
 
     updateSimulation(frameSeconds) {
-        if (this.user.paused) {
+        const activeUsers = this.game.users.filter(user => !user.paused);
+        if (activeUsers.length === 0) {
             this.simulationAccumulator = 0;
             return;
         }
@@ -44,7 +49,9 @@ export default class GameLoop {
         this.simulationAccumulator += frameSeconds;
         let steps = 0;
         while (this.simulationAccumulator >= FIXED_STEP_SECONDS && steps < MAX_SIMULATION_STEPS) {
-            this.user.simulateStep(FIXED_STEP_SECONDS, FIXED_STEP_SECONDS * 60);
+            this.game.server.updateWorld(FIXED_STEP_SECONDS);
+            this.game.server.updateEntities(FIXED_STEP_SECONDS * 60);
+            for (const user of activeUsers) user.updateView();
             this.simulationAccumulator -= FIXED_STEP_SECONDS;
             steps++;
         }
@@ -55,3 +62,8 @@ export default class GameLoop {
         }
     }
 }
+
+// Temporary in-process driver: this coordinates client presentation and server
+// simulation until each side owns its own update transport and scheduler.
+const game = new Game();
+new DualUpdateLoop(game).start();

@@ -1,7 +1,7 @@
 import InputController from './input.js';
-import PlayerMovementTracker from './systems/player-movement-tracker.js';
 import Camera from './render/camera.js';
 import Hud from './render/hud.js';
+import InventoryView from './ui/inventory-view.js';
 import { getViewBasis, reverseView } from '../server/systems/view-basis.js';
 
 const CHUNK_MAP_REFRESH_MILLISECONDS = 100;
@@ -11,17 +11,17 @@ const CHUNK_MAP_REFRESH_MILLISECONDS = 100;
 export default class User {
     constructor({ server, renderer, glCanvas, hudCanvas, controlledEntityId = null, keyBindings = {}, mouseBindings = {} }) {
         this.server = server;
-        this.controlledEntityId = controlledEntityId
-            ?? server.findEntity(entity => entity.type === 'player')?.id;
+        this.controlledEntityId = controlledEntityId ?? server.getPlayer()?.id;
         if (!server.world.entities.getById(this.controlledEntityId)) {
             throw new Error('User requires a controlled player entity in the world.');
         }
 
         this.renderer = renderer;
+        this.inventoryView = new InventoryView(this.player);
         this.camera = new Camera(this.player, 90, 0.1, 200, { getViewBasis, reverseView });
         this.hud = new Hud(hudCanvas, { getViewBasis });
-        this.playerTracker = new PlayerMovementTracker(this.player, server.world);
         this.lastChunkMapRefresh = 0;
+        this.updateInventory = deltaScale => this.inventoryView.update(this.hud.canvas, deltaScale);
 
         this.input = new InputController({
             canvas: glCanvas,
@@ -38,6 +38,11 @@ export default class User {
             },
             inspectChunks: () => console.log(server.world.chunks),
         });
+        server.setPlayerController(this.controlledEntityId, {
+            inputs: this.input,
+            updateInventory: this.updateInventory,
+            isPaused: () => this.paused,
+        });
     }
 
     get player() {
@@ -48,26 +53,12 @@ export default class User {
         return this.input.paused;
     }
 
-    // Server simulation receives local controls only for this user's entity.
-    simulateStep(deltaSeconds, deltaScale) {
-        this.server.updateWorld(deltaSeconds);
-        const context = { world: this.server.world, canvas: this.hud.canvas };
-        this.server.updateEntities(deltaScale, context, (entity, scale, sharedContext) => {
-            if (entity.id === this.controlledEntityId) {
-                entity.update(scale, { ...sharedContext, inputs: this.input });
-            } else {
-                entity.update(scale, sharedContext);
-            }
-        });
-        this.playerTracker.update();
+    updateView() {
         this.camera.update();
     }
 
-    updateChunksAndMaps(timestamp, deltaScale) {
+    updateMaps(timestamp, crossedChunkBorder = false) {
         const player = this.player;
-        const crossedChunkBorder = this.playerTracker.consumeChunkBorderCrossing();
-        this.server.updateChunks(player, this.renderer, crossedChunkBorder, deltaScale);
-
         const refreshChunkMap = timestamp - this.lastChunkMapRefresh >= CHUNK_MAP_REFRESH_MILLISECONDS;
         for (const map of this.hud.maps) {
             const shouldRefresh = crossedChunkBorder || (map.isChunkMap && refreshChunkMap);
@@ -94,6 +85,6 @@ export default class User {
             `Unmeshed Chunks: ${chunkManager.dirtyChunkQueue.length}`,
             `Ungenerated Chunks: ${chunkManager.generator.getPendingCount()}`,
         ];
-        this.hud.draw(this.paused, debugTexts, player, this.input);
+        this.hud.draw(this.paused, debugTexts, player, this.input, this.inventoryView);
     }
 }

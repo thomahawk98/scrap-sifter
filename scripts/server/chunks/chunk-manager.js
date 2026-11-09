@@ -42,20 +42,44 @@ export default class ChunkManager {
     }
 
     invalidateNeighbors(chunk) {
-        for (const [dx, dy, dz] of [[-1, 0, 0], [1, 0, 0], [0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1]]) {
-            const neighbor = this.getChunk(chunk.cx + dx, chunk.cy + dy, chunk.cz + dz);
-            if (neighbor?.dataStatus === 'ready') neighbor.invalidateMesh();
+        // Meshing reads neighboring blocks for face culling and AO, including
+        // diagonal samples at chunk edges and corners.
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dz = -1; dz <= 1; dz++) {
+                    if (dx === 0 && dy === 0 && dz === 0) continue;
+                    const neighbor = this.getChunk(chunk.cx + dx, chunk.cy + dy, chunk.cz + dz);
+                    if (neighbor?.dataStatus === 'ready') neighbor.invalidateMesh();
+                }
+            }
         }
     }
 
-    update(player, renderer, crossed, deltaScale = 1) {
-        const playerChunkPosition = this.world.getChunkCoords(...player.pos);
-        this.generator.setPlayerPosition(player.pos);
-        this.pruneUnneededGeneration(playerChunkPosition);
-        if (crossed || !this.hasActiveChunks()) this.evaluateChunks(player, renderer);
+    update(players, renderer, crossed, deltaScale = 1) {
+        const activePlayers = [...players].filter(player => player?.pos);
+        if (activePlayers.length === 0) {
+            this.generator.setPlayerPositions([]);
+            this.generator.pruneOutsideRenderDistance([], this.world.renderDistance);
+            for (const [key, chunk] of this.chunks) {
+                if (chunk.dataStatus === 'ready') {
+                    if (chunk.residency === 'active') renderer.deleteChunk(key);
+                    chunk.residency = 'cached';
+                } else {
+                    this.chunks.delete(key);
+                }
+            }
+            this.dirtyChunkQueue.length = 0;
+            this.queuedChunks.clear();
+            return;
+        }
+
+        const playerChunkPositions = activePlayers.map(player => this.world.getChunkCoords(...player.pos));
+        this.generator.setPlayerPositions(activePlayers.map(player => player.pos));
+        this.pruneUnneededGeneration(playerChunkPositions);
+        if (crossed || !this.hasActiveChunks()) this.evaluateChunks(playerChunkPositions, renderer);
         this.generator.processNextRequests();
         this.addDirtyChunksToQueue();
-        this.updateQueue(player, renderer, 4);
+        this.updateQueue(playerChunkPositions, renderer, 4);
         for (const chunk of this.chunks.values()) {
             chunk.fade = Math.min(chunk.maxFade, chunk.fade + deltaScale);
             if (chunk.residency === 'active' && chunk.dataStatus === 'missing') {
@@ -64,15 +88,15 @@ export default class ChunkManager {
         }
     }
 
-    pruneUnneededGeneration(playerChunkPosition) {
+    pruneUnneededGeneration(playerChunkPositions) {
         const renderDistance = this.world.renderDistance;
-        this.generator.pruneOutsideRenderDistance(playerChunkPosition, renderDistance);
+        this.generator.pruneOutsideRenderDistance(playerChunkPositions, renderDistance);
 
         // A queued or in-flight chunk without block data has no value outside
         // the render range. Removing it also makes late worker replies stale.
         for (const [key, chunk] of this.chunks) {
-            if (chunk.dataStatus === 'ready' || this.isChunkInThreshold(
-                [chunk.cx, chunk.cy, chunk.cz], playerChunkPosition, renderDistance
+            if (chunk.dataStatus === 'ready' || this.isChunkNearAnyPlayer(
+                [chunk.cx, chunk.cy, chunk.cz], playerChunkPositions, renderDistance
             )) continue;
             this.chunks.delete(key);
         }
@@ -105,8 +129,8 @@ export default class ChunkManager {
         }
     }
 
-    updateQueue(player, renderer, timeBudgetMs = 4) {
-        this.sortQueue(player);
+    updateQueue(playerChunkPositions, renderer, timeBudgetMs = 4) {
+        this.sortQueue(playerChunkPositions);
         let count = 0;
         const startTime = performance.now();
         while (this.dirtyChunkQueue.length && (count === 0 || performance.now() - startTime < timeBudgetMs)) {
@@ -128,33 +152,47 @@ export default class ChunkManager {
         }
     }
 
-    sortQueue(player) {
-        // sort queue by distance to player
-        const [px, py, pz] = this.world.getChunkCoords(...player.pos);
-        this.dirtyChunkQueue.sort((a, b) => Math.hypot(a.cx - px, a.cy - py, a.cz - pz) - Math.hypot(b.cx - px, b.cy - py, b.cz - pz));
+    sortQueue(playerChunkPositions) {
+        // A chunk's priority is its distance to the nearest connected player.
+        const distanceToNearestPlayer = chunk => {
+            let nearestDistance = Infinity;
+            for (const [px, py, pz] of playerChunkPositions) {
+                nearestDistance = Math.min(nearestDistance,
+                    Math.hypot(chunk.cx - px, chunk.cy - py, chunk.cz - pz));
+            }
+            return nearestDistance;
+        };
+        this.dirtyChunkQueue.sort((a, b) => distanceToNearestPlayer(a) - distanceToNearestPlayer(b));
     }
 
-    evaluateChunks(player, renderer) {
-        const pos = this.world.getChunkCoords(...player.pos);
+    evaluateChunks(playerChunkPositions, renderer) {
         const threshold = this.world.renderDistance;
-        this.generateNewChunks(pos, threshold);
-        this.updateResidency(pos, threshold, renderer);
+        this.generateNewChunks(playerChunkPositions, threshold);
+        this.updateResidency(playerChunkPositions, threshold, renderer);
     }
 
-    generateNewChunks(pos, threshold) {
-        const [px, py, pz] = pos;
-        for (let cx = px - threshold; cx <= px + threshold; cx++) for (let cy = py - threshold; cy <= py + threshold; cy++) for (let cz = pz - threshold; cz <= pz + threshold; cz++) {
-            if (!this.isChunkInThreshold([cx, cy, cz], pos, threshold)) continue;
-            const chunk = this.createChunk(cx, cy, cz);
-            if (chunk.dataStatus === 'missing') this.generator.requestNewChunk(cx, cy, cz);
+    generateNewChunks(playerChunkPositions, threshold) {
+        for (const pos of playerChunkPositions) {
+            const [px, py, pz] = pos;
+            for (let cx = px - threshold; cx <= px + threshold; cx++) {
+                for (let cy = py - threshold; cy <= py + threshold; cy++) {
+                    for (let cz = pz - threshold; cz <= pz + threshold; cz++) {
+                        if (!this.isChunkInThreshold([cx, cy, cz], pos, threshold)) continue;
+                        const chunk = this.createChunk(cx, cy, cz);
+                        if (chunk.dataStatus === 'missing') this.generator.requestNewChunk(cx, cy, cz);
+                    }
+                }
+            }
         }
     }
 
-    updateResidency(pos, threshold, renderer) {
+    updateResidency(playerChunkPositions, threshold, renderer) {
         // Residency controls GPU allocation; CPU block data remains available
         // while cached so a nearby chunk can be restored without regeneration.
         for (const [key, chunk] of this.chunks) {
-            const active = this.isChunkInThreshold([chunk.cx, chunk.cy, chunk.cz], pos, threshold);
+            const active = this.isChunkNearAnyPlayer(
+                [chunk.cx, chunk.cy, chunk.cz], playerChunkPositions, threshold
+            );
             if (active) {
                 chunk.residency = 'active';
                 if (chunk.meshStatus === 'ready' && chunk.geometry && !renderer.hasChunk(key)) renderer.uploadChunk(chunk, false);
@@ -168,6 +206,10 @@ export default class ChunkManager {
     isChunkInThreshold([cx, cy, cz], [px, py, pz], threshold) {
         const dx = cx - px, dy = cy - py, dz = cz - pz;
         return dx * dx + dy * dy + dz * dz <= threshold * threshold;
+    }
+
+    isChunkNearAnyPlayer(chunkPosition, playerChunkPositions, threshold) {
+        return playerChunkPositions.some(position => this.isChunkInThreshold(chunkPosition, position, threshold));
     }
 
     clear(renderer) {

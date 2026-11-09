@@ -1,9 +1,9 @@
-import Inventory from '../ui/inventory.js';
-import { raycast } from '../../server/systems/raycast.js';
-import { getViewBasis, rotateLocal } from '../../server/systems/view-basis.js';
-import Entity from '../../server/entities/entity.js';
-import Bullet from '../../server/entities/bullet.js';
-import { createCubeGeometry } from '../../server/core/entity-geometry.js';
+import Inventory from './inventory.js';
+import { raycast } from '../systems/raycast.js';
+import { getViewBasis, rotateLocal } from '../systems/view-basis.js';
+import Entity from './entity.js';
+import Bullet from './bullet.js';
+import { createCubeGeometry } from '../core/entity-geometry.js';
 
 const PLAYER_GEOMETRY = createCubeGeometry();
 
@@ -33,14 +33,14 @@ export default class Player extends Entity {
         this.reach = 5;
         this.outlinedBlock = null;
 
-        this.inventory = new Inventory(this, 'default');
+        this.inventory = new Inventory('default');
         this.menuOpen = false;
 
         this.respawn(world);
     }
 
-    update(deltaScale = 1, { inputs, world, canvas } = {}) {
-        if (!inputs || !world || !canvas) return;
+    update(deltaScale = 1, { inputs, world, updateInventory } = {}) {
+        if (!inputs || !world) return;
         this.inputs = inputs;
 
         //move player
@@ -50,7 +50,9 @@ export default class Player extends Entity {
         this.updateBody();
         this.interact(world, deltaScale);
 
-        this.inventory.update(canvas, deltaScale);
+        // User supplies the client view update at the same point in the player
+        // tick, while inventory data remains owned by the server entity.
+        if (updateInventory) updateInventory(deltaScale);
 
         //change perspective mode
         if (inputs.consumePress ? inputs.consumePress('togglePerspective') : inputs.keys['r']) {

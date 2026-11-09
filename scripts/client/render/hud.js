@@ -8,7 +8,7 @@ export default class Hud {
         this.getViewBasis = getViewBasis;
     }
 
-    draw(paused, debugTexts, player, inputs) {
+    draw(paused, debugTexts, player, inputs, inventoryView) {
         const ctx = this.ctx;
         const canvas = this.canvas;
         const cx = this.canvas.width * 0.5;
@@ -18,7 +18,7 @@ export default class Hud {
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
         //draw player inventory
-        player.inventory.draw(ctx, canvas, inputs);
+        inventoryView.draw(ctx, canvas, inputs);
 
         ctx.globalAlpha = 1;
         if (paused) {

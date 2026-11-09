@@ -2,6 +2,7 @@ import { getBlockDropType } from './block-stats.js';
 import physics from '../systems/physics.js';
 import { getViewBasis } from '../systems/view-basis.js';
 import EntityManager from '../entities/entity-manager.js';
+import PlayerMovementTracker from '../systems/player-movement-tracker.js';
 
 export default class World {
     constructor() {
@@ -16,6 +17,8 @@ export default class World {
 
         this.chunks = new Map();
         this.entities = new EntityManager();
+        this.players = new Map();
+        this.playerTrackers = new Map();
 
         this.update();
     }
@@ -35,6 +38,36 @@ export default class World {
 
     getChunkKey(cx, cy, cz) {
         return `${cx},${cy},${cz}`;
+    }
+
+    addPlayer(player) {
+        this.entities.add(player);
+        this.players.set(player.id, player);
+        this.playerTrackers.set(player.id, new PlayerMovementTracker(player, this));
+        return player;
+    }
+
+    removePlayer(playerOrId) {
+        const playerId = typeof playerOrId === 'object' ? playerOrId.id : playerOrId;
+        this.playerTrackers.delete(playerId);
+        this.players.delete(playerId);
+        return this.entities.remove(playerId);
+    }
+
+    getPlayers() {
+        return this.players.values();
+    }
+
+    updatePlayerTrackers() {
+        for (const tracker of this.playerTrackers.values()) tracker.update();
+    }
+
+    consumePlayerChunkBorderCrossings() {
+        let crossed = false;
+        for (const tracker of this.playerTrackers.values()) {
+            crossed = tracker.consumeChunkBorderCrossing() || crossed;
+        }
+        return crossed;
     }
 
     getChunkCoords(x, y, z) {
@@ -83,35 +116,27 @@ export default class World {
         //set block
         const success = chunk.setBlock(lx, ly, lz, block);
 
-        // Edge handling (VERY important)
-        if (lx === 0) {
-            const chunk = this.getChunk(cx - 1, cy, cz);
-            if (chunk) chunk.invalidateMesh();
-        }
-        if (lx === 15) {
-            const chunk = this.getChunk(cx + 1, cy, cz);
-            if (chunk) chunk.invalidateMesh();
-        }
-        if (ly === 0) {
-            const chunk = this.getChunk(cx, cy - 1, cz);
-            if (chunk) chunk.invalidateMesh();
-        }
-        if (ly === 15) {
-            const chunk = this.getChunk(cx, cy + 1, cz);
-            if (chunk) chunk.invalidateMesh();
-        }
-
-        if (lz === 0) {
-            const chunk = this.getChunk(cx, cy, cz - 1);
-            if (chunk) chunk.invalidateMesh();
-        }
-        if (lz === 15) {
-            const chunk = this.getChunk(cx, cy, cz + 1);
-            if (chunk) chunk.invalidateMesh();
-        }
+        // Neighbor meshes sample across chunk edges for face visibility and
+        // ambient occlusion. Include diagonal edge/corner neighbors too.
+        this.invalidateBoundaryNeighbors(cx, cy, cz, lx, ly, lz);
 
         return success;
     };
+
+    invalidateBoundaryNeighbors(cx, cy, cz, lx, ly, lz) {
+        const xOffsets = lx === 0 ? [-1, 0] : lx === 15 ? [0, 1] : [0];
+        const yOffsets = ly === 0 ? [-1, 0] : ly === 15 ? [0, 1] : [0];
+        const zOffsets = lz === 0 ? [-1, 0] : lz === 15 ? [0, 1] : [0];
+
+        for (const dx of xOffsets) {
+            for (const dy of yOffsets) {
+                for (const dz of zOffsets) {
+                    if (dx === 0 && dy === 0 && dz === 0) continue;
+                    this.getChunk(cx + dx, cy + dy, cz + dz)?.invalidateMesh();
+                }
+            }
+        }
+    }
 
     breakBlock(hit, player) {
         const block = this.getBlock(...hit.position);
@@ -173,7 +198,8 @@ export default class World {
         if (existing && existing.type !== 'air') return false;
 
         // check if block is inside other entities
-        const entities = [player]; // add other entities to check for collision later
+        const entities = [...this.players.values()];
+        if (!entities.includes(player)) entities.push(player);
         const collides = physics.anyEntityCollidesWithBlock(block, entities);
         if (collides) return false;
 

@@ -4,7 +4,7 @@ export default class ChunkGenerator {
         this.world = manager.world;
         this.requestQueue = new Map();
         this.batchSize = batchSize;
-        this.playerPosition = null;
+        this.playerPositions = [];
         // Keep worker state in slots so concurrency can grow without adding
         // separate worker properties or dispatch paths.
         this.workers = Array.from({ length: workerCount }, () => {
@@ -20,8 +20,8 @@ export default class ChunkGenerator {
         });
     }
 
-    setPlayerPosition(position) {
-        this.playerPosition = position;
+    setPlayerPositions(positions) {
+        this.playerPositions = positions.map(position => [...position]);
     }
 
     getPendingCount() {
@@ -42,9 +42,9 @@ export default class ChunkGenerator {
         return chunk;
     }
 
-    pruneOutsideRenderDistance(position, renderDistance) {
+    pruneOutsideRenderDistance(positions, renderDistance) {
         for (const [key, request] of this.requestQueue) {
-            if (this.isWithinDistance(request.chunk, position, renderDistance)) continue;
+            if (positions.some(position => this.isWithinDistance(request.chunk, position, renderDistance))) continue;
             this.requestQueue.delete(key);
             request.chunk.dataStatus = 'missing';
         }
@@ -58,12 +58,12 @@ export default class ChunkGenerator {
     }
 
     processNextRequests() {
-        if (!this.requestQueue.size || !this.playerPosition) return;
+        if (!this.requestQueue.size || this.playerPositions.length === 0) return;
 
         // Recheck before dispatch because the player may have moved while these
         // requests waited for an available worker.
-        const playerChunkPosition = this.world.getChunkCoords(...this.playerPosition);
-        this.pruneOutsideRenderDistance(playerChunkPosition, this.world.renderDistance);
+        const playerChunkPositions = this.playerPositions.map(position => this.world.getChunkCoords(...position));
+        this.pruneOutsideRenderDistance(playerChunkPositions, this.world.renderDistance);
         if (!this.requestQueue.size) return;
 
         for (const slot of this.workers) {
@@ -92,10 +92,14 @@ export default class ChunkGenerator {
     }
 
     getDistanceSquared(chunk) {
-        const dx = chunk.cx * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - this.playerPosition[0];
-        const dy = chunk.cy * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - this.playerPosition[1];
-        const dz = chunk.cz * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - this.playerPosition[2];
-        return dx * dx + dy * dy + dz * dz;
+        let nearestDistanceSquared = Infinity;
+        for (const position of this.playerPositions) {
+            const dx = chunk.cx * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - position[0];
+            const dy = chunk.cy * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - position[1];
+            const dz = chunk.cz * this.world.CHUNK_SIZE + this.world.CHUNK_SIZE / 2 - position[2];
+            nearestDistanceSquared = Math.min(nearestDistanceSquared, dx * dx + dy * dy + dz * dz);
+        }
+        return nearestDistanceSquared;
     }
 
     handleWorkerMessage(slot, data) {

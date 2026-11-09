@@ -1,9 +1,6 @@
-import ServerRuntime from '../server/runtime.js';
-import Player from './entities/player.js';
-import { createTestEntity } from './entities/test-entity.js';
-import GameLoop from './game-loop.js';
-import User from './user.js';
-import Renderer from './render/renderer.js';
+import ServerRuntime from './server/runtime.js';
+import User from './client/user.js';
+import Renderer from './client/render/renderer.js';
 
 export default class Game {
     constructor({ keyBindings = {}, mouseBindings = {} } = {}) {
@@ -13,21 +10,16 @@ export default class Game {
         window.addEventListener('resize', () => this.resizeCanvases());
 
         this.server = new ServerRuntime();
-        // Keep the existing moving test entity and its startup behavior.
-        this.server.addEntity(createTestEntity());
-
-        const player = this.server.addEntity(new Player(this.server.world));
         this.renderer = new Renderer(this.glCanvas);
         this.user = new User({
             server: this.server,
             renderer: this.renderer,
             glCanvas: this.glCanvas,
             hudCanvas: this.hudCanvas,
-            controlledEntityId: player.id,
             keyBindings,
             mouseBindings,
         });
-        this.loop = new GameLoop(this.user);
+        this.users = [this.user];
     }
 
     resizeCanvases() {
@@ -37,7 +29,4 @@ export default class Game {
         }
     }
 
-    start() {
-        this.loop.start();
-    }
 }
