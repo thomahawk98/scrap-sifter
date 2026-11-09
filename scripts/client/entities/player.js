@@ -1,10 +1,9 @@
-import terrain from '../core/terrain.js';
 import Inventory from '../ui/inventory.js';
-import { raycast } from '../systems/raycast.js';
-import { getViewBasis, rotateLocal } from '../systems/view-basis.js';
-import Entity from './entity.js';
-import Bullet from './bullet.js';
-import { createCubeGeometry } from '../core/entity-geometry.js';
+import { raycast } from '../../server/systems/raycast.js';
+import { getViewBasis, rotateLocal } from '../../server/systems/view-basis.js';
+import Entity from '../../server/entities/entity.js';
+import Bullet from '../../server/entities/bullet.js';
+import { createCubeGeometry } from '../../server/core/entity-geometry.js';
 
 const PLAYER_GEOMETRY = createCubeGeometry();
 

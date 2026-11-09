@@ -1,4 +1,4 @@
-import { getBlockFaceColor } from '../core/block-stats.js';
+import { getBlockFaceColor } from '../../server/core/block-stats.js';
 export default class Inventory {
     constructor(player, presetName = null) {
         this.player = player;

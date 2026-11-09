@@ -1,7 +1,5 @@
-import { getViewBasis, reverseView } from '../systems/view-basis.js';
-
 export default class Camera {
-    constructor(player, fov = 90, near = 0.1, far = 100) {
+    constructor(player, fov = 90, near = 0.1, far = 100, { getViewBasis, reverseView } = {}) {
         this.player = player;
         this.pos = [...player.head.pos];
         this.orientation = [...player.orientation];
@@ -11,6 +9,8 @@ export default class Camera {
         this.far = far;
 
         this.viewDistance = 3;
+        this.getViewBasis = getViewBasis;
+        this.reverseView = reverseView;
 
     }
 
@@ -21,7 +21,7 @@ export default class Camera {
         const mode = this.player.perspectiveMode;
 
         //direction the player is facing
-        const { forward } = getViewBasis(orientation);
+        const { forward } = this.getViewBasis(orientation);
         const dist = this.viewDistance;
 
         //update camera position based on mode
@@ -42,13 +42,13 @@ export default class Camera {
         }
 
         // The rear-facing perspective turns around local up and preserves roll.
-        this.orientation = mode === 2 ? reverseView(orientation) : [...orientation];
+        this.orientation = mode === 2 ? this.reverseView(orientation) : [...orientation];
     }
 
     getView(eyePos = this.pos, target = null, up = [0, 1, 0]) {
         let x, y, z;
         if (target === null) {
-            const basis = getViewBasis(this.orientation);
+            const basis = this.getViewBasis(this.orientation);
             x = basis.right;
             y = basis.up;
             z = basis.forward.map(component => -component);

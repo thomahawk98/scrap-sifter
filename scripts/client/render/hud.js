@@ -1,12 +1,11 @@
-import { ChunkMap } from "../ui/maps.js";
-import { getViewBasis } from '../systems/view-basis.js';
-
+import { ChunkMap } from '../ui/maps.js';
 export default class Hud {
-    constructor(canvas) {
+    constructor(canvas, { getViewBasis }) {
         this.canvas = canvas;
         this.ctx = canvas.getContext("2d");
 
         this.maps = [new ChunkMap()];
+        this.getViewBasis = getViewBasis;
     }
 
     draw(paused, debugTexts, player, inputs) {
@@ -95,7 +94,7 @@ export default class Hud {
 
             ctx.save();
             ctx.translate(arrow.x, arrow.y);
-            const { forward } = getViewBasis(player.orientation);
+            const { forward } = this.getViewBasis(player.orientation);
             ctx.rotate(Math.atan2(forward[0], -forward[2]));
 
             ctx.fillStyle = 'red';

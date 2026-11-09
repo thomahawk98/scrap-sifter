@@ -1,5 +1,5 @@
-import Entity from './entity.js';
-import { createCubeGeometry } from '../core/entity-geometry.js';
+import Entity from '../../server/entities/entity.js';
+import { createCubeGeometry } from '../../server/core/entity-geometry.js';
 
 // Retains the moving cube that was previously created during main.js startup.
 export function createTestEntity() {

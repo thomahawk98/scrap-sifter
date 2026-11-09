@@ -18,13 +18,22 @@ export const DEFAULT_MOUSE_BINDINGS = { shoot: 0, roll: 1, place: 2, inventoryCl
 const normalizeKey = key => key.toLowerCase();
 
 export default class InputController {
-    constructor({ canvas, player, camera, world, chunkManager, renderer, keyBindings = {}, mouseBindings = {} }) {
+    constructor({
+        canvas, player, camera, keyBindings = {}, mouseBindings = {},
+        onClearChunks = () => {},
+        changeRenderDistance = () => {},
+        clampRenderDistance = () => {},
+        inspectChunk = () => {},
+        inspectChunks = () => {},
+    }) {
         this.canvas = canvas;
         this.player = player;
         this.camera = camera;
-        this.world = world;
-        this.chunkManager = chunkManager;
-        this.renderer = renderer;
+        this.onClearChunks = onClearChunks;
+        this.changeRenderDistance = changeRenderDistance;
+        this.clampRenderDistance = clampRenderDistance;
+        this.inspectChunk = inspectChunk;
+        this.inspectChunks = inspectChunks;
         const configuredBindings = { ...DEFAULT_KEY_BINDINGS, ...keyBindings };
         this.keyBindings = Object.fromEntries(Object.entries(configuredBindings).map(([action, binding]) => [
             action,
@@ -85,21 +94,20 @@ export default class InputController {
         // FOV and render distance remain keydown-driven, matching the original controls.
         if (this.isDown('fovDown')) this.camera.fov--;
         if (this.isDown('fovUp')) this.camera.fov++;
-        if (this.isDown('renderDistanceDown')) this.world.renderDistance--;
-        if (this.isDown('renderDistanceUp')) this.world.renderDistance++;
-        this.world.renderDistance = Math.clamp(this.world.renderDistance, 2, 12);
+        if (this.isDown('renderDistanceDown')) this.changeRenderDistance(-1);
+        if (this.isDown('renderDistanceUp')) this.changeRenderDistance(1);
+        this.clampRenderDistance();
 
         if (this.consumePress('clearChunks', false)) {
             document.exitPointerLock();
             this.paused = true;
-            this.chunkManager.clear(this.renderer);
+            this.onClearChunks();
         }
 
         if (this.consumePress('inspectChunk')) {
-            const chunkCoords = this.world.getChunkCoords(...this.player.pos);
-            console.log(this.world.getChunk(...chunkCoords));
+            this.inspectChunk(this.player.pos);
         }
-        if (this.consumePress('inspectChunks')) console.log(this.world.chunks);
+        if (this.consumePress('inspectChunks')) this.inspectChunks();
 
         if (this.consumePress('toggleMenu')) this.toggleMenu();
 

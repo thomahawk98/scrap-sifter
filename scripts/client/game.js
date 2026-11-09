@@ -1,13 +1,9 @@
-import World from '../core/world.js';
-import ChunkManager from '../chunks/chunk-manager.js';
-import Player from '../entities/player.js';
-import { createTestEntity } from '../entities/test-entity.js';
-import PlayerMovementTracker from '../systems/player-movement-tracker.js';
+import ServerRuntime from '../server/runtime.js';
+import Player from './entities/player.js';
+import { createTestEntity } from './entities/test-entity.js';
 import GameLoop from './game-loop.js';
 import User from './user.js';
-import Camera from '../render/camera.js';
-import Renderer from '../render/renderer.js';
-import Hud from '../render/hud.js';
+import Renderer from './render/renderer.js';
 
 export default class Game {
     constructor({ keyBindings = {}, mouseBindings = {} } = {}) {
@@ -16,34 +12,22 @@ export default class Game {
         this.resizeCanvases();
         window.addEventListener('resize', () => this.resizeCanvases());
 
-        this.world = new World();
+        this.server = new ServerRuntime();
         // Keep the existing moving test entity and its startup behavior.
-        this.world.entities.add(createTestEntity());
+        this.server.addEntity(createTestEntity());
 
-        const player = this.world.entities.add(new Player(this.world));
-        this.playerTracker = new PlayerMovementTracker(player, this.world);
-        this.camera = new Camera(player, 90, 0.1, 200);
+        const player = this.server.addEntity(new Player(this.server.world));
         this.renderer = new Renderer(this.glCanvas);
-        const hud = new Hud(this.hudCanvas);
-        this.chunkManager = new ChunkManager(this.world);
         this.user = new User({
-            world: this.world,
-            camera: this.camera,
+            server: this.server,
             renderer: this.renderer,
-            hud,
-            chunkManager: this.chunkManager,
-            canvas: this.glCanvas,
+            glCanvas: this.glCanvas,
+            hudCanvas: this.hudCanvas,
+            controlledEntityId: player.id,
             keyBindings,
             mouseBindings,
         });
-        this.loop = new GameLoop({
-            world: this.world,
-            user: this.user,
-            playerTracker: this.playerTracker,
-            camera: this.camera,
-            renderer: this.renderer,
-            chunkManager: this.chunkManager,
-        });
+        this.loop = new GameLoop(this.user);
     }
 
     resizeCanvases() {
