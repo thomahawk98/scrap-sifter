@@ -53,9 +53,6 @@ export default class Inventory {
             ctx.globalAlpha = 1;
         }
 
-        const { x, y } = this.getDrawPosition(0, canvas);
-        const alpha = Math.clamp(this.openAnimation / 50 - 0.5, 0, 1);
-        return [x, y, alpha];
     }
 
     drawSlot(ctx, x, y, selected, inBox) {

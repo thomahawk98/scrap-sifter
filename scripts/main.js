@@ -14,7 +14,6 @@ import Renderer from './render/renderer.js';
 
 import Hud from './render/hud.js';
 
-import terrain from './core/terrain.js';
 
 //init canvases
 const glCanvas = document.getElementById("glcanvas");
@@ -34,6 +33,7 @@ window.addEventListener('resize', resize);
 const world = new World();
 
 const player = new Player(world);
+world.entities.add(player);
 const playerTracker = new PlayerMovementTracker(player, world);
 const camera = new Camera(player, 90, 0.1, 200);
 
@@ -105,20 +105,6 @@ document.addEventListener('keydown', e => {
         keys['['] = false;
     }
 
-    //cycle between maps
-    if (keys['m']) {
-        const validMapTypes = ['temperature', 'humidity', 'vitality', 'biome'];
-        for (const map of hud.maps) {
-            const typeIndex = validMapTypes.indexOf(map.type);
-            const newIndex = (typeIndex + 1) % (validMapTypes.length);
-
-            //change map type
-            map.type = validMapTypes[newIndex];
-            map.uploadData(player.pos, world);
-        }
-        keys['m'] = false;
-    }
-
     //open / close player menu
     if (keys['e']) {
         keys['e'] = false;
@@ -183,7 +169,9 @@ function main(timestamp) {
         let steps = 0;
         while (simulationAccumulator >= FIXED_STEP_SECONDS && steps < MAX_SIMULATION_STEPS) {
             world.update(FIXED_STEP_SECONDS);
-            player.update({ keys, mouse }, world, hud.canvas, FIXED_STEP_SECONDS * 60);
+            world.entities.update(FIXED_STEP_SECONDS * 60, {
+                inputs: { keys, mouse }, world, canvas: hud.canvas,
+            });
             playerTracker.update();
             camera.update();
             simulationAccumulator -= FIXED_STEP_SECONDS;
@@ -210,12 +198,11 @@ function main(timestamp) {
     renderer.render(world, camera, player);
 
     //draw ui
-    const biome = terrain.getBiomeAt(player.pos[0], player.pos[2], world.seed);
     const debugTexts = [
         `${Math.round(player.pos[0])}, ${Math.round(player.pos[1])}, ${Math.round(player.pos[2])}`,
-        `FPS: ${fpsTracker.fps}`, `Mode: ${player.mode}`, `On block: ${player.onBlock}`, '',
+        `FPS: ${fpsTracker.fps}`, `On block: ${player.onBlock}`, '',
         `FOV: ${camera.fov}`, `View: ${camera.orientation.map(a => Math.round(a * 100) / 100).join(', ')}`, '',
-        `Biome: ${biome.name}`, `Seed: ${world.seed}`, `Render Distance: ${world.renderDistance}`, '',
+        `Seed: ${world.seed}`, `Render Distance: ${world.renderDistance}`, '',
         `Resident Chunks: ${world.chunks.size}`, `Active Chunks: ${chunkManager.getActiveChunkCount()}`,
         `Unmeshed Chunks: ${chunkManager.dirtyChunkQueue.length}`, `Ungenerated Chunks: ${chunkManager.generator.getPendingCount()}`,
     ];

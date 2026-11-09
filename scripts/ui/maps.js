@@ -1,7 +1,3 @@
-import { getBlockFaceColor } from '../core/block-stats.js';
-import terrain from '../core/terrain.js';
-import biomes from '../core/biomes.js';
-
 const CHUNK_MAP_STATUSES = {
     generating: { color: [168, 85, 247], label: 'Generating data' },
     missing: { color: [110, 116, 128], label: 'No block data' },
@@ -69,57 +65,6 @@ class EnvironmentMap {
     }
 
     getPixelColor(value) {
-        const grayAlpha = `rgba(255, 255, 255, ${Math.clamp(value, 0, 1)})`;
-        return grayAlpha;
-    }
-}
-
-export class BiomeMap extends EnvironmentMap {
-    constructor(type, width = 256, height = 256) {
-        super(width, height);
-        this.type = type;
-        this.pixelSize = terrain.biomeResolution;
-    }
-
-    getData() {
-        const data = terrain[this.type + 'Map'];
-        return data;
-    }
-
-    getPixelColor(value) {
-        const v = Math.clamp(value, 0, 1);
-        if (this.type == 'temperature') {
-            let r = v * 255;
-            let g = (1 - v) * 155;
-            let b = (1 - v) * 255;
-
-            if(r > 255) r = 255, g = 0, b = 255;
-            if(b > 255) r = 155, g = 255, b = 0;
-
-            //red / blue color
-            return `rgb(${r}, ${g}, ${b})`;
-        } else if (this.type == 'humidity') {
-            const r = v * 255;
-            const g = 0;
-            const b = v * 100 + 155;
-
-            //blue / green color
-            return `rgb(${r}, ${g}, ${b})`;
-        } else if (this.type == 'vitality') {
-            const r = (1 - v) * 100;
-            const g = v * 255;
-            const b = 0;
-
-            //green / brown color
-            return `rgb(${r}, ${g}, ${b})`;
-        } else if (this.type == 'biome') {
-            const biome = biomes.getBiomeStats(value);
-            const block = biome.layers[0];
-            const rgb = getBlockFaceColor(block.type);
-            const color = `rgb(${rgb[0] * 255}, ${rgb[1] * 255}, ${rgb[2] * 255})`;
-            return color;
-        }
-
         const grayAlpha = `rgba(255, 255, 255, ${Math.clamp(value, 0, 1)})`;
         return grayAlpha;
     }

@@ -1,4 +1,3 @@
-import biomes from './biomes.js';
 
 //perlin noise implementation
 var noise = function (x, y, z) {
@@ -53,138 +52,14 @@ var noise = function (x, y, z) {
 }
 
 const Terrain = {
-    heightMap: new Map(),
-    biomeMap: new Map(),
-    temperatureMap: new Map(),
-    humidityMap: new Map(),
-    vitalityMap: new Map(),
-    biomeResolution: 4,
-    getKey: function (x, z) {
-        return `
-        ${Math.floor(x / this.biomeResolution) * this.biomeResolution},
-        ${Math.floor(z / this.biomeResolution) * this.biomeResolution}
-        `;
-    },
-    getBiomeAt: function (x, z, seed) {
-        // biome resolution can be changed to increase chunkiness, but also increase performance
-        const key = this.getKey(x, z);
-        if (this.biomeMap.has(key)) return biomes.getBiomeStats(this.biomeMap.get(key));
-
-        //get the biome
-        const { temperature, humidity, vitality } = this.getBiomeCategories(x, z, seed);
-        const biome = biomes.getBiome(temperature, humidity, vitality);
-
-        //store the biome to decrase function run time (noise function is expensive)
-        this.biomeMap.set(key, biome.name);
-
-        return biome;
-    },
-    getBiomeCategories: function (x, z, seed) {
-        const key = this.getKey(x, z);
-
-        //get biome temperature
-        if (this.temperatureMap.has(key)) {
-            var biomeTemperature = this.temperatureMap.get(key);
-        } else {
-            const temperatureSeed = Math.seededRandom(seed) * 10000;
-            var biomeTemperature = noise(x * 0.005, temperatureSeed, z * 0.005);
-            this.temperatureMap.set(key, biomeTemperature);
-        }
-
-        //get biome humidity
-        if (this.humidityMap.has(key)) {
-            var biomeHumidity = this.humidityMap.get(key);
-        } else {
-            const humiditySeed = Math.seededRandom(seed * 728214 + 89347) * 10000;
-            var biomeHumidity = noise(x * 0.005, humiditySeed, z * 0.005);
-            this.humidityMap.set(key, biomeHumidity);
-        }
-
-        //get biome vitality
-        if (this.vitalityMap.has(key)) {
-            var biomeVitality = this.vitalityMap.get(key);
-        } else {
-            const vitalitySeed = Math.seededRandom(seed * 39075 + 10925) * 10000;
-            var biomeVitality = noise(x * 0.005, vitalitySeed, z * 0.005);
-            this.vitalityMap.set(key, biomeVitality);
-        }
-
-        return {
-            temperature: biomeTemperature,
-            humidity: biomeHumidity,
-            vitality: biomeVitality
-        }
-    },
+    // The active generator uses one seeded 3D density field for solid blocks.
     getHeightAt: function (x, z, seed) {
         return noise(x * 0.001, seed, z * 0.001) * 500; // simple height function
-
-        //ant colony:
-        /*
-        const noiseValue = noise(x * 0.1, seed, z * 0.1);
-        return (noiseValue < 0.6 && noiseValue > 0.4) ? 0 : 5;
-        */
-
-        /*
-        const continentalness = noise(x * 0.005, seed, z * 0.005);
-        const erosion = noise(x * 0.001, seed, z * 0.001);
-        const peaksAndValleys = this.getPeaksAndValleys(x, z, seed);
-
-        const height = continentalness * erosion * peaksAndValleys;
-
-        return peaksAndValleys * 50;//height * 100;
-        */
-    },
-    getPeaksAndValleys(x, z, seed) {
-        let height = 0;
-
-        const octaves = 4;
-        const baseFrequency = 0.01;
-
-        for (let n = 0; n < octaves; n++) {
-            const frequency = baseFrequency * 2 ** n;
-            const amplitude = 1 / 2 ** n;
-
-            height += noise(x * frequency, seed, z * frequency) * amplitude;
-        }
-
-        return height;
     },
 
-    getSolidityAt: function (x, y, z, seed, generateCaves = false) {
-        //if (x > 0) return false; // generate a cross section for debugging
-
-        // generate 3d noise
+    getSolidityAt: function (x, y, z, seed) {
         const density = this.generate3dNoiseValue(x, y, z, seed);
-        // DENSITY: 0 = no block generation, 1 = full block generation, 0.5 = roughly 50% block generation
         return density < 0.5;
-
-        // how much 3d noise the terrain will have
-        const WEIRDNESS = this.getWeirdnessAt(x, z, seed);
-        
-
-        // add 3d noise on top of a 2d noise layer
-        const surfaceHeight = this.getHeightAt(x, z, seed);
-        // centered at surfaceY to avoid just adding noise on top of the surface
-        // (and so getHeightAt remains roughly consistent with the actual surface)
-        const heightFromSurface = y - surfaceHeight;
-        // adjust the solidity threshold based on the height from the surface, proportional to the weirdness
-        const solidityThreshold = 0.5 - heightFromSurface / WEIRDNESS;
-
-        // determine if a block is there
-        const solid = density < solidityThreshold;
-
-        // generate caves if requested
-        if (generateCaves) {
-            if (!solid) return false; // preliminary check before generating caves
-            const cave = this.getCaveAt(x, y, z, seed);
-            if (cave) return false;
-        }
-
-        return solid;
-    },
-
-    getWeirdnessAt: function (x, z, seed) {
-        return 1 + 0.1 * (Math.abs(x) + Math.abs(z));
     },
 
     generate3dNoiseValue: function (x, y, z, seed, octaves = 3, baseFrequency = 0.025) {
@@ -206,58 +81,6 @@ const Terrain = {
         return noiseValue;
     },
 
-    getCaveAt: function (x, y, z, seed) {
-        // generate caverns
-        const cavernDensity = Math.clamp((heightFromSurface + 100) * 0.01, 0.6, 1);
-        const cavernNoiseValue = noise(x * 0.1 + seed * 58464, y * 0.1 + seed * 79284, z * 0.1 + seed * 304);
-        const cavern = cavernNoiseValue >= cavernDensity;
-        if (cavern) return false;
-
-        // generate noodle caves
-        const noodleCaveNoiseValue = noise(x * 0.01 + seed * 58464, y * 0.01 + seed * 79284, z * 0.01 + seed * 304);
-        const noodleCave = Math.abs(noodleCaveNoiseValue - 0.5) * 2 < 0.01;
-        if (noodleCave) return false;
-
-        return true;
-    },
-
-    getTypeAt: function (x, y, z, seed) {
-        const height = this.getHeightAt(x, z, seed);
-        return y < height ? 'stone' : 'air';
-
-        if (y > height) return 'air';
-        if (y < -5000) return 'magma';
-
-        const distFromTop = Math.floor(height - y);
-        const biome = this.getBiomeAt(x, z, seed);
-        const layers = biome.layers;
-
-        let accumulatedDepth = 0;
-        for (let i = 0; i < layers.length; i++) {
-            accumulatedDepth += layers[i].depth;
-            if (distFromTop < accumulatedDepth) {
-                //correct layer
-                const layer = layers[i];
-
-                //see if a block is randomly changed
-                if (layer.random) {
-                    const randomValue = Math.seededRandom(x * 104989 + y * 90387 + z * 20957 + seed * 8375);
-                    let randomChanceAccumulator = 0;
-                    for (const randomLayer of layer.random) {
-                        randomChanceAccumulator += randomLayer.chance;
-                        if (randomValue < randomChanceAccumulator) {
-                            return randomLayer.type;
-                        }
-                    }
-                }
-
-                return layer.type;
-            }
-        }
-
-        //default to void
-        return 'air';
-    }
 }
 
 export default Terrain;

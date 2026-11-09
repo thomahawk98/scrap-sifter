@@ -100,41 +100,6 @@ export function getBlockFaceColor(type, normal = [0, 1, 0]) {
     }
 }
 
-export function getBlockMaxHealth(type) {
-    switch (type) {
-        case "grass":
-        case "withered grass":
-        case "dead grass":
-        case "dirt":
-        case "sand":
-        case 'red sand':
-        case "snow":
-        case "dirty snow":
-        case "red wool":
-        case "leaves":
-            return 5;
-        case "wood":
-            return 10;
-        case "sandstone":
-        case "ice":
-        case "stone":
-            return 15;
-        case "concrete":
-        case "rock":
-            return 20;
-        case "gold":
-        case "sludge":
-        case "scrap metal":
-            return 50;
-        case "diamonds":
-            return 100;
-        case "glass":
-            return 2;
-        default:
-            return 20;
-    }
-}
-
 export function getBlockDropType(type) {
     switch (type) {
         case 'grass':

@@ -1,4 +1,4 @@
-import { BiomeMap, ChunkMap } from "../ui/maps.js";
+import { ChunkMap } from "../ui/maps.js";
 import { getViewBasis } from '../systems/view-basis.js';
 
 export default class Hud {
@@ -6,10 +6,7 @@ export default class Hud {
         this.canvas = canvas;
         this.ctx = canvas.getContext("2d");
 
-        this.maps = [
-            //new BiomeMap('temperature'),
-            new ChunkMap()
-        ];
+        this.maps = [new ChunkMap()];
     }
 
     draw(paused, debugTexts, player, inputs) {
@@ -22,8 +19,7 @@ export default class Hud {
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
         //draw player inventory
-        const [x, y, alpha] = player.inventory.draw(ctx, canvas, inputs);
-        if (player.mode == 'survival') this.drawHealth(player, x, y, (1 - alpha));
+        player.inventory.draw(ctx, canvas, inputs);
 
         ctx.globalAlpha = 1;
         if (paused) {
@@ -41,30 +37,6 @@ export default class Hud {
 
         this.drawDebugTexts(ctx, debugTexts);
         this.drawMaps(ctx, player);
-    }
-
-    drawHealth(player, x, y, alpha) {
-        const ctx = this.ctx;
-        const canvas = this.canvas;
-
-        const cx = this.canvas.width * 0.5;
-        const cy = this.canvas.height * 0.5;
-        const percent = player.vitals.health / player.vitals.maxHealth;
-
-        ctx.globalAlpha = alpha;
-
-        ctx.save();
-        ctx.translate(cx, y - 65);
-
-        ctx.fillStyle = 'rgb(100,0,0)';
-        ctx.fillRect(-200, -7.5, 400, 15);
-
-        ctx.fillStyle = 'rgb(200,0,0)';
-        ctx.fillRect(-200, -7.5, 400 * percent, 15);
-
-        ctx.restore();
-
-        ctx.globalAlpha = 1;
     }
 
     drawCrosshair(ctx, cx, cy) {

@@ -2,13 +2,16 @@ import physics from '../systems/physics.js';
 import terrain from '../core/terrain.js';
 import Inventory from '../ui/inventory.js';
 import { raycast } from '../systems/raycast.js';
-import { getBlockMaxHealth } from '../core/block-stats.js';
 import { getViewBasis, rotateLocal } from '../systems/view-basis.js';
+import Entity from './entity.js';
+import { createCubeGeometry } from '../core/entity-geometry.js';
 
-export default class Player {
+const PLAYER_GEOMETRY = createCubeGeometry([0, 0, 0]);
+
+export default class Player extends Entity {
     constructor(world) {
+        super({ geometry: PLAYER_GEOMETRY, scale: [0.6, 0.6, 0.6], material: { color: [0, 0, 0] } });
         this.type = 'player';
-        this.mode = 'creative';
 
         this.pos = [0, 0, 0];
         this.spawnPos = [0, 0, 0];
@@ -29,11 +32,6 @@ export default class Player {
             }
         }
 
-        this.dead = false;
-        this.vitals = {
-            health: 100, maxHealth: 100,
-        }
-
         this.perspectiveMode = 0;
 
         this.onBlock = false;
@@ -47,18 +45,16 @@ export default class Player {
         this.respawn(world);
     }
 
-    update(inputs, world, canvas, deltaScale = 1) {
+    update(deltaScale = 1, { inputs, world, canvas } = {}) {
+        if (!inputs || !world || !canvas) return;
         this.inputs = inputs;
 
         //move player
-        if (!this.menuOpen && !this.dead) this.updateAcceleration(deltaScale);
+        if (!this.menuOpen) this.updateAcceleration(deltaScale);
         physics.moveEntity(this, world, deltaScale);
 
-        if (!this.dead) {
-            this.updateBody();
-            this.interact(world, deltaScale);
-            this.updateVitals();
-        }
+        this.updateBody();
+        this.interact(world, deltaScale);
 
         this.inventory.update(canvas, deltaScale);
 
@@ -73,14 +69,6 @@ export default class Player {
         //respawn player
         if (keys['enter']) this.respawn(world);
 
-        //change mode
-        if (keys['\u{005c}']) {
-            const modes = ['survival', 'creative'];
-            const index = modes.indexOf(this.mode);
-            const newIndex = (index + 1) % modes.length;
-            this.mode = modes[newIndex];
-            keys['\u{005c}'] = false;
-        }
     };
 
     respawn(world, matchTerrainHeight = true) {
@@ -88,9 +76,6 @@ export default class Player {
 
         this.velocity = [0, 0, 0];
         this.pos = this.spawnPos;
-
-        this.dead = false;
-        this.vitals.health = this.vitals.maxHealth;
 
         if (matchTerrainHeight) {
             const height = terrain.getHeightAt(this.pos[0], this.pos[2], world.seed);
@@ -111,11 +96,6 @@ export default class Player {
         this.orientation = rotateLocal(this.orientation, [1, 0, 0], -mouseY * sensitivity);
     }
 
-    updateVitals() {
-        this.vitals.health = Math.max(0, Math.min(this.vitals.health, this.vitals.maxHealth));
-        if (this.vitals.health == 0) this.dead = true;
-    }
-
     interact(world, deltaScale = 1) {
         if (this.attackReload > 0) this.attackReload = Math.max(0, this.attackReload - deltaScale);
         if (this.interactReload > 0) this.interactReload = Math.max(0, this.interactReload - deltaScale);
@@ -132,17 +112,11 @@ export default class Player {
 
         // update the outlined block to be the block the player is looking at
         const differentBlock = !this.outlinedBlock ? true : JSON.stringify(this.outlinedBlock.pos) == JSON.stringify(hit.position) ? false : true;
-        if (differentBlock) {
-            const health = this.mode == 'creative' ? 1 : getBlockMaxHealth(hit.block.type);
-            this.outlinedBlock = {
-                pos: hit.position, type: hit.block.type,
-                health, maxHealth: health
-            }
-        }
+        if (differentBlock) this.outlinedBlock = { pos: hit.position, type: hit.block.type };
 
         //interact with the world
         if (this.inputs.mouse.buttons[0] && this.attackReload <= 0) {
-            const destroyed = world.breakBlock(hit, this, deltaScale);
+            const destroyed = world.breakBlock(hit, this);
             if (destroyed) this.attackReload = 10;
         }
         if (this.inputs.mouse.buttons[2] && this.interactReload <= 0) {
@@ -176,8 +150,7 @@ export default class Player {
         if (keys['s']) target = target.map((v, i) => v - forward[i]);
         if (keys['a']) target = target.map((v, i) => v - right[i]);
         if (keys['d']) target = target.map((v, i) => v + right[i]);
-        const jumping = keys[' '] && this.mode !== 'creative' && this.onBlock;
-        if (keys[' '] && this.mode === 'creative') {
+        if (keys[' ']) {
             target = target.map((v, i) => v + up[i]);
         }
         if (keys['shift']) target = target.map((v, i) => v - up[i]);
@@ -189,12 +162,6 @@ export default class Player {
             for (let axis = 0; axis < 3; axis++) {
                 accel[axis] += (target[axis] / targetLength) * speed * deltaScale;
             }
-        }
-
-        // Jump impulse remains strong enough to clear blocks, but follows local
-        // up; the normalized movement vector keeps diagonal input from boosting speed.
-        if (jumping) {
-            for (let axis = 0; axis < 3; axis++) this.velocity[axis] += up[axis] * 0.2 * deltaScale;
         }
 
         //accelerate player

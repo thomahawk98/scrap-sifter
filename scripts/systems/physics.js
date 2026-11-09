@@ -1,11 +1,5 @@
 const Physics = {
-    GRAVITY: 0.0125,
     moveEntity(entity, world, deltaScale = 1) {
-        // accelerate entity due to gravity
-        if (entity.type !== 'player' || entity.mode !== 'creative') {
-            entity.velocity[1] -= this.GRAVITY * deltaScale;
-        }
-
         // move the entity
         for (let a = 0; a < 3; a++) {
             this.tryToMove(entity, a, world, deltaScale);
@@ -34,9 +28,6 @@ const Physics = {
         const collided = this.getBlockingBlock(world, entityShell, axis, speed, entity.pos);
         if (!collided) entity.pos = newPos; // move allowed
         else {
-            // take damage from colliding with blocks at high velocities
-            this.damageEntityFromSpeed(entity, speed);
-
             entity.velocity[axis] = 0;
 
             // move the entity to the edge of the colliding block
@@ -90,18 +81,6 @@ const Physics = {
             }
         }
         return closestBlock;
-    },
-    damageEntityFromSpeed(entity, speed) {
-        if (entity.vitals == undefined || entity.vitals.health == undefined) return console.log(entity, 'is missing vitals');
-        if (entity.type == 'player' && entity.mode == 'creative') return;
-
-        speed = Math.abs(speed);
-        const DAMAGE_THRESHOLD = 0.3;
-        if (speed < DAMAGE_THRESHOLD) return;
-
-        const excess = speed - DAMAGE_THRESHOLD;
-        const damage = (excess * 100);
-        entity.vitals.health -= damage;
     },
     anyBlockCollidesWithEntity(world, entityShell, all = false) {
         // all means we need to get all the blocks that collide with the entity, if not, we just need to know if one does

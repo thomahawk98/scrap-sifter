@@ -1,6 +1,7 @@
 import { getBlockDropType } from './block-stats.js';
 import physics from '../systems/physics.js';
 import { getViewBasis } from '../systems/view-basis.js';
+import EntityManager from '../entities/entity-manager.js';
 
 export default class World {
     constructor() {
@@ -14,6 +15,7 @@ export default class World {
         this.BRIGHTNESS_AT_NOON = 2;
 
         this.chunks = new Map();
+        this.entities = new EntityManager();
 
         this.update();
     }
@@ -108,12 +110,9 @@ export default class World {
         return success;
     };
 
-    breakBlock(hit, player, deltaScale = 1) {
+    breakBlock(hit, player) {
         const block = this.getBlock(...hit.position);
         if (!block) return console.log('no block found at', hit.position);
-
-        player.outlinedBlock.health -= deltaScale;
-        if (player.outlinedBlock.health > 0) return false; // still breaking, don't delete yet
 
         this.setBlock(...hit.position, { type: 'air' });
 
