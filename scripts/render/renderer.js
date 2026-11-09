@@ -1,5 +1,6 @@
 // src/render/Renderer.js
 import * as shaders from './shaders.js';
+import EntityRenderer from './entity-renderer.js';
 
 function getOutlineVertices(x, y, z) {
     const corners = [
@@ -28,30 +29,6 @@ function getOutlineVertices(x, y, z) {
     return new Float32Array(vertices);
 }
 
-// WebGL matrices are column-major. Entity orientation uses the same [w,x,y,z]
-// quaternion convention as the camera, then applies local scale and position.
-function getEntityModelMatrix(entity) {
-    const [w, x, y, z] = entity.orientation;
-    const [sx, sy, sz] = entity.scale;
-    const [px, py, pz] = entity.pos;
-    return new Float32Array([
-        (1 - 2 * (y * y + z * z)) * sx, (2 * (x * y + z * w)) * sx, (2 * (x * z - y * w)) * sx, 0,
-        (2 * (x * y - z * w)) * sy, (1 - 2 * (x * x + z * z)) * sy, (2 * (y * z + x * w)) * sy, 0,
-        (2 * (x * z + y * w)) * sz, (2 * (y * z - x * w)) * sz, (1 - 2 * (x * x + y * y)) * sz, 0,
-        px, py, pz, 1,
-    ]);
-}
-
-function multiplyMatrices(a, b) {
-    const out = new Float32Array(16);
-    for (let column = 0; column < 4; column++) {
-        for (let row = 0; row < 4; row++) {
-            for (let k = 0; k < 4; k++) out[column * 4 + row] += a[k * 4 + row] * b[column * 4 + k];
-        }
-    }
-    return out;
-}
-
 export default class Renderer {
     constructor(canvas) {
         this.canvas = canvas;
@@ -61,10 +38,6 @@ export default class Renderer {
         // Chunk buffers are renderer-owned and keyed by chunk coordinates.
         this.outlineBuffer = this.gl.createBuffer();
         this.chunkBuffers = new Map();
-        // Geometry buffers are shared by entities with the same mesh object;
-        // moving entities only update a matrix uniform each frame.
-        this.entityBuffers = new Map();
-
         this.init();
     }
 
@@ -97,6 +70,17 @@ export default class Renderer {
             uFogFadeStart: gl.getUniformLocation(this.worldProgram, 'uFogFadeStart'),
             uFogFadeEnd: gl.getUniformLocation(this.worldProgram, 'uFogFadeEnd'),
         };
+        this.entityRenderer = new EntityRenderer(
+            gl,
+            this.worldProgram,
+            this.worldAttribs,
+            {
+                modelViewMatrix: this.worldUniforms.modelViewMatrix,
+                projectionMatrix: this.worldUniforms.projectionMatrix,
+                chunkFade: this.worldUniforms.uChunkFade,
+                materialColor: this.worldUniforms.materialColor,
+            },
+        );
 
         // Get attribute / uniform locations for outline program
         this.outlineAttribs = {
@@ -242,7 +226,7 @@ export default class Renderer {
 
         //render entities
         for (const entity of world.entities.values()) {
-            if (entity.visible && entity.geometry) this.renderEntity(entity, view, proj);
+            if (entity.visible && entity.geometry) this.entityRenderer.render(entity, view, proj);
         }
 
         //render outlined block
@@ -299,42 +283,6 @@ export default class Renderer {
             gl.UNSIGNED_INT,
             0
         );
-    }
-
-    getEntityBuffers(geometry) {
-        let buffers = this.entityBuffers.get(geometry);
-        if (buffers) return buffers;
-
-        const gl = this.gl;
-        buffers = { vertexBuffer: gl.createBuffer(), indexBuffer: gl.createBuffer(), indexCount: geometry.indices.length };
-        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, geometry.vertices, gl.STATIC_DRAW);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indexBuffer);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, geometry.indices, gl.STATIC_DRAW);
-        this.entityBuffers.set(geometry, buffers);
-        return buffers;
-    }
-
-    renderEntity(entity, view, proj) {
-        const gl = this.gl;
-        const buffers = this.getEntityBuffers(entity.geometry);
-        const modelView = multiplyMatrices(view, getEntityModelMatrix(entity));
-        const stride = 9 * 4; // position + normal + color; UVs can extend this mesh layout later.
-
-        gl.useProgram(this.worldProgram);
-        gl.uniformMatrix4fv(this.worldUniforms.projectionMatrix, false, proj);
-        gl.uniformMatrix4fv(this.worldUniforms.modelViewMatrix, false, modelView);
-        gl.uniform1f(this.worldUniforms.uChunkFade, 1);
-        gl.uniform3fv(this.worldUniforms.materialColor, entity.material.color || [1, 1, 1]);
-        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
-        gl.vertexAttribPointer(this.worldAttribs.position, 3, gl.FLOAT, false, stride, 0);
-        gl.enableVertexAttribArray(this.worldAttribs.position);
-        gl.vertexAttribPointer(this.worldAttribs.normal, 3, gl.FLOAT, false, stride, 3 * 4);
-        gl.enableVertexAttribArray(this.worldAttribs.normal);
-        gl.vertexAttribPointer(this.worldAttribs.color, 3, gl.FLOAT, false, stride, 6 * 4);
-        gl.enableVertexAttribArray(this.worldAttribs.color);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indexBuffer);
-        gl.drawElements(gl.TRIANGLES, buffers.indexCount, gl.UNSIGNED_INT, 0);
     }
 
     renderOutline(block, view, proj) {

@@ -1,4 +1,4 @@
-import FPSTracker from './fps-tracker.js';
+import FPSTracker from '../systems/fps-tracker.js';
 
 const FIXED_STEP_SECONDS = 1 / 60;
 const MAX_FRAME_SECONDS = 0.1;
@@ -7,8 +7,8 @@ const CHUNK_MAP_REFRESH_MILLISECONDS = 100;
 
 // Owns frame timing and coordinates simulation, chunk work, rendering, and HUD.
 export default class GameLoop {
-    constructor({ world, player, playerTracker, camera, renderer, hud, chunkManager, input }) {
-        Object.assign(this, { world, player, playerTracker, camera, renderer, hud, chunkManager, input });
+    constructor({ world, user, playerTracker, camera, renderer, chunkManager }) {
+        Object.assign(this, { world, user, playerTracker, camera, renderer, chunkManager });
         this.fpsTracker = new FPSTracker();
         this.previousFrameTime = null;
         this.simulationAccumulator = 0;
@@ -31,14 +31,14 @@ export default class GameLoop {
         const frameSeconds = Math.min(elapsedSeconds, MAX_FRAME_SECONDS);
         this.updateSimulation(frameSeconds);
         this.updateChunksAndMaps(timestamp, frameSeconds);
-        this.renderer.render(this.world, this.camera, this.player);
-        this.hud.draw(this.input.paused, this.getDebugTexts(), this.player, this.input);
+        this.renderer.render(this.world, this.camera, this.user.player);
+        this.user.draw(this.getDebugTexts());
 
         requestAnimationFrame(nextTimestamp => this.frame(nextTimestamp));
     }
 
     updateSimulation(frameSeconds) {
-        if (this.input.paused) {
+        if (this.user.paused) {
             this.simulationAccumulator = 0;
             return;
         }
@@ -47,10 +47,9 @@ export default class GameLoop {
         let steps = 0;
         while (this.simulationAccumulator >= FIXED_STEP_SECONDS && steps < MAX_SIMULATION_STEPS) {
             this.world.update(FIXED_STEP_SECONDS);
-            this.world.entities.update(FIXED_STEP_SECONDS * 60, {
-                inputs: this.input,
+            this.user.updateEntities(FIXED_STEP_SECONDS * 60, {
                 world: this.world,
-                canvas: this.hud.canvas,
+                canvas: this.user.hud.canvas,
             });
             this.playerTracker.update();
             this.camera.update();
@@ -65,19 +64,20 @@ export default class GameLoop {
     }
 
     updateChunksAndMaps(timestamp, frameSeconds) {
+        const player = this.user.player;
         const crossedChunkBorder = this.playerTracker.consumeChunkBorderCrossing();
-        this.chunkManager.update(this.player, this.renderer, crossedChunkBorder, frameSeconds * 60);
+        this.chunkManager.update(player, this.renderer, crossedChunkBorder, frameSeconds * 60);
 
         const refreshChunkMap = timestamp - this.lastChunkMapRefresh >= CHUNK_MAP_REFRESH_MILLISECONDS;
-        for (const map of this.hud.maps) {
+        for (const map of this.user.hud.maps) {
             const shouldRefresh = crossedChunkBorder || (map.isChunkMap && refreshChunkMap);
-            if (shouldRefresh) map.uploadData(this.player.pos, this.world);
+            if (shouldRefresh) map.uploadData(player.pos, this.world);
         }
         if (refreshChunkMap) this.lastChunkMapRefresh = timestamp;
     }
 
     getDebugTexts() {
-        const { pos, onBlock } = this.player;
+        const { pos, onBlock } = this.user.player;
         return [
             `${Math.round(pos[0])}, ${Math.round(pos[1])}, ${Math.round(pos[2])}`,
             `FPS: ${this.fpsTracker.fps}`, `On block: ${onBlock}`, '',

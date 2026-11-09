@@ -15,9 +15,23 @@ export default class EntityManager {
         return this.entities.delete(id);
     }
 
-    update(deltaScale, context) {
+    getById(id) {
+        return this.entities.get(id) || null;
+    }
+
+    findFirst(predicate) {
+        for (const entity of this.entities.values()) {
+            if (predicate(entity)) return entity;
+        }
+        return null;
+    }
+
+    update(deltaScale, context, updateEntity = null) {
         // New entities created during an update begin moving on the next step.
-        for (const entity of [...this.entities.values()]) entity.update(deltaScale, context);
+        for (const entity of [...this.entities.values()]) {
+            if (updateEntity) updateEntity(entity, deltaScale, context);
+            else entity.update(deltaScale, context);
+        }
     }
 
     values() {
