@@ -1,9 +1,8 @@
-const CHUNK_SIZE = 16;
 import { encodeBlock, decodeBlock } from '../core/block-registry.js';
 
-// A chunk owns world data and its CPU mesh. GPU resources live in Renderer.
-// The three statuses below describe independent parts of the pipeline rather
-// than one combined lifecycle state.
+const CHUNK_SIZE = 16;
+
+// Server chunk data is authoritative; clients build their own render geometry.
 export default class Chunk {
     constructor(cx, cy, cz) {
         this.cx = cx;
@@ -12,14 +11,9 @@ export default class Chunk {
         this.blocks = null;
         this.tileEntities = null;
         this.dataStatus = 'missing'; // missing -> generating -> ready
-        this.geometry = null;
-        this.meshStatus = 'none'; // none -> dirty -> building -> ready
         this.revision = 0;
         this.modified = false;
         this.empty = false;
-        this.residency = 'cached'; // active chunks may be meshed and rendered
-        this.fade = 50;
-        this.maxFade = 50;
     }
 
     getIndex(lx, ly, lz) {
@@ -40,7 +34,6 @@ export default class Chunk {
         if (encodedBlock !== 0) this.empty = false;
         this.modified = true;
         this.revision++;
-        this.invalidateMesh();
         return true;
     }
 
@@ -49,12 +42,5 @@ export default class Chunk {
         this.empty = empty;
         this.dataStatus = 'ready';
         this.revision++;
-        this.invalidateMesh();
-    }
-
-    invalidateMesh() {
-        // Geometry depends on this chunk's blocks and its neighboring blocks.
-        this.geometry = null;
-        this.meshStatus = this.dataStatus === 'ready' ? 'dirty' : 'none';
     }
 }

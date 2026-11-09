@@ -157,4 +157,27 @@ export default class InputController {
         for (const key of this.keyBindings[action]) this.keys[key] = false;
         return true;
     }
+
+    // Ship named actions instead of physical key codes so server gameplay uses
+    // the player's configured bindings without importing browser input logic.
+    snapshot() {
+        const actions = {};
+        for (const action of Object.keys(this.keyBindings)) {
+            actions[action] = !this.paused && this.isDown(action);
+            actions[`pressed:${action}`] = !this.paused && !!this.pressedActions[action];
+        }
+        const snapshot = {
+            orientation: [...this.player.orientation],
+            actions,
+            buttons: this.paused ? [] : [...this.mouse.buttons],
+            paused: this.paused,
+            menuOpen: this.player.menuOpen,
+            inventory: {
+                open: this.player.inventory.open,
+                selectedSlot: this.player.inventory.selectedSlot,
+            },
+        };
+        this.pressedActions = {};
+        return snapshot;
+    }
 }

@@ -1,0 +1,171 @@
+import Chunk from './shared/chunk-data.js';
+
+// Client replica contains only the data needed for view, collision queries,
+// maps, and meshing. The server remains authoritative for world mutations.
+export default class ClientWorld {
+    constructor() {
+        this.seed = 0;
+        this.daylight = 1;
+        this.renderDistance = 5;
+        this.CHUNK_SIZE = 16;
+        this.chunks = new Map();
+        this.entities = new Map();
+    }
+
+    getChunkKey(cx, cy, cz) { return `${cx},${cy},${cz}`; }
+    getChunkCoords(x, y, z) { return [x, y, z].map(value => Math.floor(value / this.CHUNK_SIZE)); }
+    getChunk(cx, cy, cz) { return this.chunks.get(this.getChunkKey(cx, cy, cz)) ?? null; }
+    createLocalPlayer() {
+        const player = createEntityReplica({
+            id: -1, type: 'player', pos: [0, 0, 0], orientation: [1, 0, 0, 0],
+            scale: [0.6, 0.6, 0.6], velocity: [0, 0, 0], material: { color: [1, 0, 0] },
+            perspectiveMode: 0, onBlock: false,
+        });
+        player.head = { pos: player.pos };
+        player.inventory = createInventory();
+        player.menuOpen = false;
+        player.inputs = { keys: {}, mouse: { buttons: [], inBox: () => false } };
+        this.entities.set(player.id, player);
+        return player;
+    }
+    getBlock(x, y, z) {
+        const [cx, cy, cz] = this.getChunkCoords(x, y, z);
+        const chunk = this.getChunk(cx, cy, cz);
+        if (!chunk?.blocks) return { pos: [x, y, z], type: 'air' };
+        const block = chunk.getBlock(modulo(x, 16), modulo(y, 16), modulo(z, 16));
+        return block ? { pos: [x, y, z], ...block } : { pos: [x, y, z], type: 'air' };
+    }
+    isSolidBlock(x, y, z) {
+        const [cx, cy, cz] = this.getChunkCoords(x, y, z);
+        const chunk = this.getChunk(cx, cy, cz);
+        if (!chunk?.blocks) return false;
+        const index = chunk.getIndex(modulo(x, 16), modulo(y, 16), modulo(z, 16));
+        return chunk.blocks[index] !== 0;
+    }
+    setBlock(x, y, z, block) {
+        const [cx, cy, cz] = this.getChunkCoords(x, y, z);
+        const chunk = this.getChunk(cx, cy, cz);
+        if (!chunk?.blocks) return false;
+        const lx = modulo(x, 16), ly = modulo(y, 16), lz = modulo(z, 16);
+        const changed = chunk.setBlock(lx, ly, lz, block);
+        const offsets = [lx, ly, lz].map(v => v === 0 ? [-1, 0] : v === 15 ? [0, 1] : [0]);
+        for (const dx of offsets[0]) for (const dy of offsets[1]) for (const dz of offsets[2]) {
+            if (!dx && !dy && !dz) continue;
+            this.getChunk(cx + dx, cy + dy, cz + dz)?.invalidateMesh();
+        }
+        return changed;
+    }
+
+    receiveChunk(data) {
+        const [cx, cy, cz] = data.chunkPos;
+        const chunk = this.getChunk(cx, cy, cz) ?? new Chunk(cx, cy, cz);
+        this.chunks.set(this.getChunkKey(cx, cy, cz), chunk);
+        chunk.setBlockData(data.voxels, data.empty);
+        chunk.residency = 'active';
+        for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+            if (!dx && !dy && !dz) continue;
+            this.getChunk(cx + dx, cy + dy, cz + dz)?.invalidateMesh();
+        }
+    }
+
+    upsertEntity(data, localEntityId = null) {
+        let entity = this.entities.get(data.id);
+        if (!entity) {
+            entity = createEntityReplica(data);
+            this.entities.set(data.id, entity);
+        }
+        if (data.id === localEntityId) {
+            const inventoryData = data.inventory ?? {};
+            // The local camera owns its orientation to avoid network snapshots
+            // pulling mouse look back to an older server tick.
+            const localOrientation = entity.orientation;
+            const currentPosition = entity.pos;
+            const hasServerPosition = entity.hasServerPosition;
+            Object.assign(entity, data);
+            entity.orientation = localOrientation;
+            entity.targetPos = [...data.pos];
+            entity.pos = hasServerPosition ? currentPosition : [...data.pos];
+            entity.hasServerPosition = true;
+            // Snapshots contain plain data, so merge them into the client model
+            // instead of replacing methods used by InventoryView.
+            entity.inventory = Object.assign(createInventory(), entity.inventory ?? {}, inventoryData);
+            entity.head = entity.head ?? { pos: entity.pos };
+            entity.head.pos = entity.pos;
+            entity.inputs = entity.inputs ?? { keys: {}, mouse: { buttons: [], inBox: () => false } };
+            entity.geometry = entity.geometry ?? createCubeGeometry();
+            return entity;
+        }
+        entity.targetPos = [...data.pos];
+        Object.assign(entity, data, { pos: entity.pos ?? [...data.pos], geometry: entity.geometry ?? createCubeGeometry() });
+        return entity;
+    }
+
+    removeEntity(id) { this.entities.delete(id); }
+}
+
+function createInventory() {
+    return {
+        items: [], selectedSlot: 0, WIDTH: 8, HEIGHT: 4, open: false,
+        cleanupDeletedItems() { this.items = this.items.filter(item => !item.delete && item.amount > 0); },
+        swapItemsBySlot(a, b) {
+            const first = this.items.find(item => item.slot === a);
+            const second = this.items.find(item => item.slot === b);
+            if (first) first.slot = b;
+            if (second) second.slot = a;
+        },
+    };
+}
+
+const CUBE_GEOMETRY = createCubeGeometry();
+
+function createEntityReplica(data) {
+    return {
+        ...data, pos: [...data.pos], targetPos: [...data.pos],
+        orientation: [...(data.orientation ?? [1, 0, 0, 0])],
+        scale: [...(data.scale ?? [1, 1, 1])], velocity: [...(data.velocity ?? [0, 0, 0])],
+        material: data.material ?? { color: [0, 0, 0] }, geometry: CUBE_GEOMETRY,
+        rotateView(mouseX, mouseY, roll = false) {
+            const sensitivity = 0.002;
+            this.orientation = rotateLocal(this.orientation, roll ? [0, 0, -1] : [0, 1, 0],
+                roll ? mouseX * sensitivity : -mouseX * sensitivity);
+            this.orientation = rotateLocal(this.orientation, [1, 0, 0], -mouseY * sensitivity);
+        },
+        closeMenu() {
+            this.menuOpen = false;
+            if (this.inventory?.open) this.inventory.open = false;
+        },
+    };
+}
+
+const modulo = (value, divisor) => ((value % divisor) + divisor) % divisor;
+
+function rotateLocal(q, axis, angle) {
+    const length = Math.hypot(...axis) || 1;
+    const [x, y, z] = axis.map(value => value / length);
+    const half = angle * 0.5, s = Math.sin(half), delta = [Math.cos(half), x*s, y*s, z*s];
+    const [aw, ax, ay, az] = q, [bw, bx, by, bz] = delta;
+    const out = [aw*bw-ax*bx-ay*by-az*bz, aw*bx+ax*bw+ay*bz-az*by,
+        aw*by-ax*bz+ay*bw+az*bx, aw*bz+ax*by-ay*bx+az*bw];
+    const norm = Math.hypot(...out) || 1;
+    return out.map(value => value / norm);
+}
+
+function createCubeGeometry() {
+    const vertices = [];
+    const faces = [
+        [[0,0,1], [[-.5,-.5,.5],[.5,-.5,.5],[.5,.5,.5],[-.5,.5,.5]]],
+        [[0,0,-1], [[.5,-.5,-.5],[-.5,-.5,-.5],[-.5,.5,-.5],[.5,.5,-.5]]],
+        [[1,0,0], [[.5,-.5,.5],[.5,-.5,-.5],[.5,.5,-.5],[.5,.5,.5]]],
+        [[-1,0,0], [[-.5,-.5,-.5],[-.5,-.5,.5],[-.5,.5,.5],[-.5,.5,-.5]]],
+        [[0,1,0], [[-.5,.5,.5],[.5,.5,.5],[.5,.5,-.5],[-.5,.5,-.5]]],
+        [[0,-1,0], [[-.5,-.5,-.5],[.5,-.5,-.5],[.5,-.5,.5],[-.5,-.5,.5]]],
+    ];
+    const indices = [];
+    let offset = 0;
+    for (const [normal, corners] of faces) {
+        for (const vertex of corners) vertices.push(...vertex, ...normal, 1, 1, 1);
+        indices.push(offset, offset + 1, offset + 2, offset, offset + 2, offset + 3);
+        offset += 4;
+    }
+    return { vertices: new Float32Array(vertices), indices: new Uint32Array(indices) };
+}

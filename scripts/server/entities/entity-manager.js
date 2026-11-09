@@ -3,6 +3,7 @@
 export default class EntityManager {
     constructor() {
         this.entities = new Map();
+        this.updateSnapshot = [];
     }
 
     add(entity) {
@@ -28,10 +29,14 @@ export default class EntityManager {
 
     update(deltaScale, context, updateEntity = null) {
         // New entities created during an update begin moving on the next step.
-        for (const entity of [...this.entities.values()]) {
+        const snapshot = this.updateSnapshot;
+        snapshot.length = 0;
+        for (const entity of this.entities.values()) snapshot.push(entity);
+        for (const entity of snapshot) {
             if (updateEntity) updateEntity(entity, deltaScale, context);
             else entity.update(deltaScale, context);
         }
+        snapshot.length = 0;
     }
 
     values() {

@@ -19,6 +19,7 @@ export default class World {
         this.entities = new EntityManager();
         this.players = new Map();
         this.playerTrackers = new Map();
+        this.onBlockChanged = () => {};
 
         this.update();
     }
@@ -116,27 +117,10 @@ export default class World {
         //set block
         const success = chunk.setBlock(lx, ly, lz, block);
 
-        // Neighbor meshes sample across chunk edges for face visibility and
-        // ambient occlusion. Include diagonal edge/corner neighbors too.
-        this.invalidateBoundaryNeighbors(cx, cy, cz, lx, ly, lz);
+        if (success) this.onBlockChanged({ chunkPos: [cx, cy, cz], blockPos: [x, y, z], block });
 
         return success;
     };
-
-    invalidateBoundaryNeighbors(cx, cy, cz, lx, ly, lz) {
-        const xOffsets = lx === 0 ? [-1, 0] : lx === 15 ? [0, 1] : [0];
-        const yOffsets = ly === 0 ? [-1, 0] : ly === 15 ? [0, 1] : [0];
-        const zOffsets = lz === 0 ? [-1, 0] : lz === 15 ? [0, 1] : [0];
-
-        for (const dx of xOffsets) {
-            for (const dy of yOffsets) {
-                for (const dz of zOffsets) {
-                    if (dx === 0 && dy === 0 && dz === 0) continue;
-                    this.getChunk(cx + dx, cy + dy, cz + dz)?.invalidateMesh();
-                }
-            }
-        }
-    }
 
     breakBlock(hit, player) {
         const block = this.getBlock(...hit.position);

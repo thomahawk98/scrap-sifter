@@ -1,0 +1,13 @@
+{
+  "name": "scrap-sifter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/server/main.js",
+    "server": "node scripts/server/main.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1"
+  }
+}

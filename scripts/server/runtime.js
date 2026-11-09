@@ -7,13 +7,13 @@ import { createTestEntity } from './entities/test-entity.js';
 // In-process server boundary. It owns world state and generation; callers use
 // this small API so a network transport can replace direct references later.
 export default class ServerRuntime {
-    constructor() {
+    constructor({ onChunkReady = () => {}, onBlockChanged = () => {}, spawnInitialPlayer = true } = {}) {
         this.world = new World();
-        this.playerSetChanged = false;
+        this.world.onBlockChanged = onBlockChanged;
         this.world.entities.add(createTestEntity());
-        this.addPlayer();
-        this.chunkManager = new ChunkManager(this.world);
-        this.playerControllers = new Map();
+        if (spawnInitialPlayer) this.addPlayer();
+        this.chunkManager = new ChunkManager(this.world, onChunkReady);
+        this.playerInputs = new Map();
     }
 
     addEntity(entity) {
@@ -23,17 +23,13 @@ export default class ServerRuntime {
 
     addPlayer(player) {
         player ??= new Player(this.world);
-        const addedPlayer = this.world.addPlayer(player);
-        this.playerSetChanged = true;
-        return addedPlayer;
+        return this.world.addPlayer(player);
     }
 
     removePlayer(playerOrId) {
         const id = typeof playerOrId === 'object' ? playerOrId.id : playerOrId;
-        this.playerControllers.delete(id);
-        const removed = this.world.removePlayer(playerOrId);
-        if (removed) this.playerSetChanged = true;
-        return removed;
+        this.playerInputs.delete(id);
+        return this.world.removePlayer(playerOrId);
     }
 
     findEntity(predicate) {
@@ -49,14 +45,12 @@ export default class ServerRuntime {
         return this.world.getPlayers();
     }
 
-    setPlayerController(playerId, controller) {
+    setPlayerInput(playerId, input) {
         if (!this.world.players.has(playerId)) throw new Error(`Unknown player entity: ${playerId}`);
-        this.playerControllers.set(playerId, controller);
+        this.playerInputs.set(playerId, input);
     }
 
-    removePlayerController(playerId) {
-        this.playerControllers.delete(playerId);
-    }
+    removePlayerInput(playerId) { this.playerInputs.delete(playerId); }
 
     updateWorld(deltaSeconds) {
         this.world.update(deltaSeconds);
@@ -65,9 +59,13 @@ export default class ServerRuntime {
     updateEntities(deltaScale) {
         this.world.entities.update(deltaScale, { world: this.world }, (entity, scale, context) => {
             if (this.world.players.has(entity.id)) {
-                const controller = this.playerControllers.get(entity.id);
-                if (!controller || controller.isPaused()) return;
-                entity.update(scale, { ...context, ...controller });
+                const inputs = this.playerInputs.get(entity.id);
+                if (!inputs || inputs.paused) return;
+                // Do not let a newly connected player fall through terrain
+                // while their spawn chunk is still being generated.
+                const centerChunk = this.world.getChunkCoords(...entity.pos);
+                if (!this.world.getChunk(...centerChunk)) return;
+                entity.update(scale, { ...context, inputs });
                 return;
             }
             entity.update(scale, context);
@@ -75,15 +73,9 @@ export default class ServerRuntime {
         this.world.updatePlayerTrackers();
     }
 
-    updateChunks(renderer, deltaScale) {
-        const crossedChunkBorder = this.world.consumePlayerChunkBorderCrossings() || this.playerSetChanged;
-        this.playerSetChanged = false;
-        this.chunkManager.update([...this.world.getPlayers()], renderer, crossedChunkBorder, deltaScale);
-        return crossedChunkBorder;
-    }
-
-    clearChunks(renderer) {
-        this.chunkManager.clear(renderer);
+    updateChunks() {
+        this.chunkManager.setPlayerPositions([...this.world.getPlayers()].map(player => player.pos));
+        this.chunkManager.update();
     }
 
     clampRenderDistance() {

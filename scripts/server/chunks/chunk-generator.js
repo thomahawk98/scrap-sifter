@@ -1,3 +1,5 @@
+import { Worker } from 'node:worker_threads';
+
 export default class ChunkGenerator {
     constructor(manager, { workerCount = 2, batchSize = 4 } = {}) {
         this.manager = manager;
@@ -9,13 +11,15 @@ export default class ChunkGenerator {
         // separate worker properties or dispatch paths.
         this.workers = Array.from({ length: workerCount }, () => {
             const slot = {
-                worker: new Worker(new URL('./chunk-generator-worker.js', import.meta.url), { type: 'module' }),
+                worker: new Worker(new URL('./chunk-generator-worker.js', import.meta.url)),
                 busy: false,
                 batch: null,
             };
-            slot.worker.onmessage = ({ data }) => this.handleWorkerMessage(slot, data);
-            slot.worker.onerror = event => this.handleWorkerError(slot, event);
-            slot.worker.onmessageerror = event => this.handleWorkerError(slot, event);
+            slot.worker.on('message', data => this.handleWorkerMessage(slot, data));
+            slot.worker.on('error', error => this.handleWorkerError(slot, error));
+            slot.worker.on('exit', code => {
+                if (code && slot.busy) this.handleWorkerError(slot, new Error(`Chunk worker exited (${code})`));
+            });
             return slot;
         });
     }
@@ -35,35 +39,26 @@ export default class ChunkGenerator {
         const chunk = this.manager.createChunk(cx, cy, cz);
         if (this.requestQueue.has(key)) return chunk;
         if (chunk.dataStatus === 'ready' || chunk.dataStatus === 'generating') return chunk;
-        // Leave requests queued until the manager has collected the whole
-        // neighborhood, so the first worker job can be the nearest one.
+        // Keep requests pending until a worker is free, then dispatch the
+        // nearest available batch to that worker.
         this.requestQueue.set(key, { key, chunk, revision: chunk.revision });
         chunk.dataStatus = 'generating';
         return chunk;
     }
 
-    pruneOutsideRenderDistance(positions, renderDistance) {
+    pruneUnsubscribed() {
         for (const [key, request] of this.requestQueue) {
-            if (positions.some(position => this.isWithinDistance(request.chunk, position, renderDistance))) continue;
+            if (this.manager.requestedBy.has(key)) continue;
             this.requestQueue.delete(key);
             request.chunk.dataStatus = 'missing';
         }
     }
 
-    isWithinDistance(chunk, position, renderDistance) {
-        const dx = chunk.cx - position[0];
-        const dy = chunk.cy - position[1];
-        const dz = chunk.cz - position[2];
-        return dx * dx + dy * dy + dz * dz <= renderDistance * renderDistance;
-    }
-
     processNextRequests() {
         if (!this.requestQueue.size || this.playerPositions.length === 0) return;
 
-        // Recheck before dispatch because the player may have moved while these
-        // requests waited for an available worker.
-        const playerChunkPositions = this.playerPositions.map(position => this.world.getChunkCoords(...position));
-        this.pruneOutsideRenderDistance(playerChunkPositions, this.world.renderDistance);
+        // Ignore queued work whose clients left the viewing area while it waited.
+        this.pruneUnsubscribed();
         if (!this.requestQueue.size) return;
 
         for (const slot of this.workers) {

@@ -39,6 +39,13 @@ export default class Renderer {
         this.outlineBuffer = this.gl.createBuffer();
         this.chunkBuffers = new Map();
         this.init();
+        this.resize();
+    }
+
+    // WebGL keeps the old viewport after canvas attributes change unless it is
+    // explicitly reset to the new drawing buffer dimensions.
+    resize() {
+        this.gl.viewport(0, 0, this.gl.drawingBufferWidth, this.gl.drawingBufferHeight);
     }
 
     init() {

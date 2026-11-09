@@ -53,6 +53,7 @@ export default class Player extends Entity {
         // User supplies the client view update at the same point in the player
         // tick, while inventory data remains owned by the server entity.
         if (updateInventory) updateInventory(deltaScale);
+        else this.inventory.cleanupDeletedItems();
 
         //change perspective mode
         if (inputs.consumePress ? inputs.consumePress('togglePerspective') : inputs.keys['r']) {

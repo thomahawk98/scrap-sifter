@@ -1,15 +1,18 @@
-// chunk generator worker
+// Node worker thread: generation stays on the server and transfers compact voxel buffers.
 import terrain from '../core/terrain.js';
+import { parentPort } from 'node:worker_threads';
 
-self.onmessage = (event) => {
-    const { chunkPositions, seed } = event.data;
+parentPort.on('message', ({ chunkPositions, seed }) => {
     const chunks = chunkPositions.map(chunkPos => generateChunkVoxels(chunkPos, seed));
     const transferables = chunks.map(chunk => chunk.voxels.buffer);
-    self.postMessage({ chunks }, transferables);
-}
+    parentPort.postMessage({ chunks }, transferables);
+});
 
 function generateChunkVoxels(chunkPos, seed) {
     const CHUNK_SIZE = 16;
+    const baseX = chunkPos[0] * CHUNK_SIZE;
+    const baseY = chunkPos[1] * CHUNK_SIZE;
+    const baseZ = chunkPos[2] * CHUNK_SIZE;
 
     const data = {
         chunkPos,
@@ -21,10 +24,7 @@ function generateChunkVoxels(chunkPos, seed) {
         for (let y = 0; y < CHUNK_SIZE; y++) {
             for (let z = 0; z < CHUNK_SIZE; z++) {
 
-                // map to world coordinates
-                const [wx, wy, wz] = [x, y, z].map((a, i) => a + chunkPos[i] * CHUNK_SIZE);
-
-                const solid = terrain.getSolidityAt(wx, wy, wz, seed);
+                const solid = terrain.getSolidityAt(baseX + x, baseY + y, baseZ + z, seed);
                 if (!solid) continue; // air, leave as a 0
 
                 // set the block to 1 to represent stone
