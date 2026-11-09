@@ -98,19 +98,28 @@ export default class Inventory {
         //swap with keys
         for (let i = 0; i < this.WIDTH; i++) {
             const key = (i + 1).toString();
-            if (this.player.inputs.keys[key]) {
+            const wasPressed = this.player.inputs.consumePress
+                ? this.player.inputs.consumePress(`hotbar${i + 1}`)
+                : this.player.inputs.keys[key];
+            if (wasPressed) {
                 const slot1 = i;
                 const slot2 = this.getMouseHoveredSlot(canvas);
                 this.swapItemsBySlot(slot1, slot2);
 
-                this.player.inputs.keys[key] = false;
+                if (this.player.inputs.keys) this.player.inputs.keys[key] = false;
             }
         }
 
-        if (this.player.inputs.mouse.buttons[0]) {
+        const inventoryClick = this.player.inputs.isMouseDown
+            ? this.player.inputs.isMouseDown('inventoryClick')
+            : this.player.inputs.mouse.buttons[0];
+        if (inventoryClick) {
             const slot = this.getMouseHoveredSlot(canvas);
             const item = this.items.find(a => a.slot == slot && !a.delete);
-            if (this.player.inputs.keys['shift']) {
+            const quickMove = this.player.inputs.isDown
+                ? this.player.inputs.isDown('quickMove')
+                : this.player.inputs.keys['shift'];
+            if (quickMove) {
                 if (item) this.moveToBestIndex(item);
             }
         }

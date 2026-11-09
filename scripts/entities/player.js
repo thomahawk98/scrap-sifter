@@ -53,16 +53,14 @@ export default class Player extends Entity {
 
         this.inventory.update(canvas, deltaScale);
 
-        const keys = inputs.keys;
-
         //change perspective mode
-        if (keys['r']) {
+        if (inputs.consumePress ? inputs.consumePress('togglePerspective') : inputs.keys['r']) {
             this.perspectiveMode = (this.perspectiveMode + 1) % 3;
-            keys['r'] = false;
+            if (inputs.keys) inputs.keys['r'] = false;
         }
 
         //respawn player
-        if (keys['enter']) this.respawn(world);
+        if (inputs.isDown ? inputs.isDown('respawn') : inputs.keys['enter']) this.respawn(world);
 
     };
 
@@ -92,7 +90,7 @@ export default class Player extends Entity {
 
         if (this.inventory.open) return;
 
-        if (this.inputs.mouse.buttons[0] && this.shootReload <= 0) {
+        if (this.isMouseDown('shoot') && this.shootReload <= 0) {
             this.shootBullet(world);
             this.shootReload = 8;
         }
@@ -110,7 +108,7 @@ export default class Player extends Entity {
         if (differentBlock) this.outlinedBlock = { pos: hit.position, type: hit.block.type };
 
         // Right-click keeps block placement; left-click is handled as shooting above.
-        if (this.inputs.mouse.buttons[2] && this.interactReload <= 0) {
+        if (this.isMouseDown('place') && this.interactReload <= 0) {
             world.placeBlock(hit, this);
             this.interactReload = 8;
         }
@@ -121,6 +119,12 @@ export default class Player extends Entity {
         world.entities.add(new Bullet([...this.pos], forward));
     }
 
+    isMouseDown(action) {
+        if (this.inputs.isMouseDown) return this.inputs.isMouseDown(action);
+        const button = action === 'shoot' ? 0 : 2;
+        return this.inputs.mouse.buttons[button];
+    }
+
     closeMenu() {
         this.menuOpen = false;
         if (this.inventory.open) this.inventory.open = false;
@@ -128,7 +132,10 @@ export default class Player extends Entity {
 
     updateAcceleration(deltaScale = 1) {
         const keys = this.inputs.keys;
-        const movementSpeed = keys['q'] ? 0.0325 : 0.02;
+        const isDown = (action, fallback) => this.inputs.isDown
+            ? this.inputs.isDown(action)
+            : Boolean(keys[fallback]);
+        const movementSpeed = isDown('fastMove', 'q') ? 0.0325 : 0.02;
 
         const speed = movementSpeed * this.getMovementTraction();
 
@@ -138,14 +145,14 @@ export default class Player extends Entity {
         let target = [0, 0, 0];
         var accel = [0, 0, 0];
 
-        if (keys['w']) target = target.map((v, i) => v + forward[i]);
-        if (keys['s']) target = target.map((v, i) => v - forward[i]);
-        if (keys['a']) target = target.map((v, i) => v - right[i]);
-        if (keys['d']) target = target.map((v, i) => v + right[i]);
-        if (keys[' ']) {
+        if (isDown('moveForward', 'w')) target = target.map((v, i) => v + forward[i]);
+        if (isDown('moveBackward', 's')) target = target.map((v, i) => v - forward[i]);
+        if (isDown('moveLeft', 'a')) target = target.map((v, i) => v - right[i]);
+        if (isDown('moveRight', 'd')) target = target.map((v, i) => v + right[i]);
+        if (isDown('moveUp', ' ')) {
             target = target.map((v, i) => v + up[i]);
         }
-        if (keys['shift']) target = target.map((v, i) => v - up[i]);
+        if (isDown('moveDown', 'shift')) target = target.map((v, i) => v - up[i]);
 
         // Normalize the complete direction so pitching up or down keeps the
         // same movement speed and works even when looking straight vertically.
