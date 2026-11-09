@@ -116,11 +116,13 @@ const Terrain = {
         }
     },
     getHeightAt: function (x, z, seed) {
-        //return noise(x * 0.001, seed, z * 0.001) * 500; // simple height function
+        return noise(x * 0.001, seed, z * 0.001) * 500; // simple height function
 
         //ant colony:
+        /*
         const noiseValue = noise(x * 0.1, seed, z * 0.1);
         return (noiseValue < 0.6 && noiseValue > 0.4) ? 0 : 5;
+        */
 
         /*
         const continentalness = noise(x * 0.005, seed, z * 0.005);
@@ -151,12 +153,13 @@ const Terrain = {
     getSolidityAt: function (x, y, z, seed, generateCaves = false) {
         //if (x > 0) return false; // generate a cross section for debugging
 
-        // how much 3d noise the terrain will have
-        const WEIRDNESS = 0//this.getWeirdnessAt(x, z, seed);
-
         // generate 3d noise
         const density = this.generate3dNoiseValue(x, y, z, seed);
         // DENSITY: 0 = no block generation, 1 = full block generation, 0.5 = roughly 50% block generation
+        return density < 0.5;
+
+        // how much 3d noise the terrain will have
+        const WEIRDNESS = this.getWeirdnessAt(x, z, seed);
         
 
         // add 3d noise on top of a 2d noise layer

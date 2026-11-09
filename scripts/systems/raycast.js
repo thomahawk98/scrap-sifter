@@ -1,10 +1,5 @@
 //raycast 3D dda
-export function raycast(pos, yaw, pitch, world, maxDistance = 10) {
-    const dir = [
-        Math.cos(pitch) * Math.sin(yaw),
-        Math.sin(pitch),
-        -Math.cos(pitch) * Math.cos(yaw)
-    ];
+export function raycast(pos, dir, world, maxDistance = 10) {
 
     let x = Math.floor(pos[0]);
     let y = Math.floor(pos[1]);

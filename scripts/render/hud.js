@@ -1,4 +1,5 @@
 import { BiomeMap, ChunkMap } from "../ui/maps.js";
+import { getViewBasis } from '../systems/view-basis.js';
 
 export default class Hud {
     constructor(canvas) {
@@ -122,7 +123,8 @@ export default class Hud {
 
             ctx.save();
             ctx.translate(arrow.x, arrow.y);
-            ctx.rotate(player.head.yaw);
+            const { forward } = getViewBasis(player.orientation);
+            ctx.rotate(Math.atan2(forward[0], -forward[2]));
 
             ctx.fillStyle = 'red';
             ctx.beginPath();

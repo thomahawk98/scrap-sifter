@@ -42,7 +42,7 @@ export default class ChunkManager {
     }
 
     invalidateNeighbors(chunk) {
-        for (const [dx, dy, dz] of [[-1,0,0],[1,0,0],[0,-1,0],[0,1,0],[0,0,-1],[0,0,1]]) {
+        for (const [dx, dy, dz] of [[-1, 0, 0], [1, 0, 0], [0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1]]) {
             const neighbor = this.getChunk(chunk.cx + dx, chunk.cy + dy, chunk.cz + dz);
             if (neighbor?.dataStatus === 'ready') neighbor.invalidateMesh();
         }
@@ -129,9 +129,9 @@ export default class ChunkManager {
     }
 
     sortQueue(player) {
-        const bias = 5 * (1 - Math.abs(player.velocity[1]));
+        // sort queue by distance to player
         const [px, py, pz] = this.world.getChunkCoords(...player.pos);
-        this.dirtyChunkQueue.sort((a, b) => Math.hypot(a.cx-px,(a.cy-py)*bias,a.cz-pz) - Math.hypot(b.cx-px,(b.cy-py)*bias,b.cz-pz));
+        this.dirtyChunkQueue.sort((a, b) => Math.hypot(a.cx - px, a.cy - py, a.cz - pz) - Math.hypot(b.cx - px, b.cy - py, b.cz - pz));
     }
 
     evaluateChunks(player, renderer) {
@@ -143,10 +143,10 @@ export default class ChunkManager {
 
     generateNewChunks(pos, threshold) {
         const [px, py, pz] = pos;
-        for (let cx=px-threshold; cx<=px+threshold; cx++) for (let cy=py-threshold; cy<=py+threshold; cy++) for (let cz=pz-threshold; cz<=pz+threshold; cz++) {
-            if (!this.isChunkInThreshold([cx,cy,cz], pos, threshold)) continue;
-            const chunk = this.createChunk(cx,cy,cz);
-            if (chunk.dataStatus === 'missing') this.generator.requestNewChunk(cx,cy,cz);
+        for (let cx = px - threshold; cx <= px + threshold; cx++) for (let cy = py - threshold; cy <= py + threshold; cy++) for (let cz = pz - threshold; cz <= pz + threshold; cz++) {
+            if (!this.isChunkInThreshold([cx, cy, cz], pos, threshold)) continue;
+            const chunk = this.createChunk(cx, cy, cz);
+            if (chunk.dataStatus === 'missing') this.generator.requestNewChunk(cx, cy, cz);
         }
     }
 
@@ -154,7 +154,7 @@ export default class ChunkManager {
         // Residency controls GPU allocation; CPU block data remains available
         // while cached so a nearby chunk can be restored without regeneration.
         for (const [key, chunk] of this.chunks) {
-            const active = this.isChunkInThreshold([chunk.cx,chunk.cy,chunk.cz], pos, threshold);
+            const active = this.isChunkInThreshold([chunk.cx, chunk.cy, chunk.cz], pos, threshold);
             if (active) {
                 chunk.residency = 'active';
                 if (chunk.meshStatus === 'ready' && chunk.geometry && !renderer.hasChunk(key)) renderer.uploadChunk(chunk, false);
@@ -165,9 +165,9 @@ export default class ChunkManager {
         }
     }
 
-    isChunkInThreshold([cx,cy,cz], [px,py,pz], threshold) {
-        const dx=cx-px, dy=cy-py, dz=cz-pz;
-        return dx*dx + dy*dy + dz*dz <= threshold*threshold;
+    isChunkInThreshold([cx, cy, cz], [px, py, pz], threshold) {
+        const dx = cx - px, dy = cy - py, dz = cz - pz;
+        return dx * dx + dy * dy + dz * dz <= threshold * threshold;
     }
 
     clear(renderer) {

@@ -1,11 +1,10 @@
+import { getViewBasis, reverseView } from '../systems/view-basis.js';
+
 export default class Camera {
     constructor(player, fov = 90, near = 0.1, far = 100) {
         this.player = player;
-        this.pos = [
-            player.head.pos[0],
-            player.head.pos[1] + player.size.y - 0.2,
-            player.head.pos[2]
-        ]
+        this.pos = [...player.head.pos];
+        this.orientation = [...player.orientation];
 
         this.fov = fov;
         this.near = near;
@@ -13,23 +12,16 @@ export default class Camera {
 
         this.viewDistance = 3;
 
-        this.pitch = 0;
-        this.yaw = 0;
     }
 
     update() {
         //player head position
         const pos = this.player.head.pos;
-        const yaw = this.player.head.yaw;
-        const pitch = this.player.head.pitch;
+        const orientation = this.player.orientation;
         const mode = this.player.perspectiveMode;
 
         //direction the player is facing
-        const forward = [
-            Math.cos(pitch) * Math.sin(yaw),
-            Math.sin(pitch),
-            -Math.cos(pitch) * Math.cos(yaw)
-        ];
+        const { forward } = getViewBasis(orientation);
         const dist = this.viewDistance;
 
         //update camera position based on mode
@@ -49,39 +41,23 @@ export default class Camera {
             ];
         }
 
-        //update camera angles based on mode
-        if(mode == 0 || mode == 1) {
-            //look in direction player is facing
-            this.yaw = yaw;
-            this.pitch = pitch;
-        } else if(mode == 2){
-            //look in opposite direction
-            this.yaw = yaw + Math.PI;
-            this.pitch = -pitch;
-        } else {
-            //look at player
-            const dx = pos[0] - this.pos[0];
-            const dy = pos[1] - this.pos[1];
-            const dz = pos[2] - this.pos[2];
-
-            this.yaw = Math.atan2(dx, -dz);
-            this.pitch = Math.atan2(
-                dy,
-                Math.sqrt(dx * dx + dz * dz)
-            );
-        }
+        // The rear-facing perspective turns around local up and preserves roll.
+        this.orientation = mode === 2 ? reverseView(orientation) : [...orientation];
     }
 
     getView(eyePos = this.pos, target = null, up = [0, 1, 0]) {
-        target ??= [
-            eyePos[0] + Math.cos(this.pitch) * Math.sin(this.yaw),
-            eyePos[1] + Math.sin(this.pitch),
-            eyePos[2] - Math.cos(this.pitch) * Math.cos(this.yaw)
-        ];
-
-        const z = Math.normalize(Math.sub(eyePos, target));
-        const x = Math.normalize(Math.cross(up, z));
-        const y = Math.cross(z, x);
+        let x, y, z;
+        if (target === null) {
+            const basis = getViewBasis(this.orientation);
+            x = basis.right;
+            y = basis.up;
+            z = basis.forward.map(component => -component);
+        } else {
+            z = Math.normalize(Math.sub(eyePos, target));
+            const viewUp = Math.abs(Math.dot(up, z)) > 0.9999 ? [0, 0, 1] : up;
+            x = Math.normalize(Math.cross(viewUp, z));
+            y = Math.cross(z, x);
+        }
         return new Float32Array([
             x[0], y[0], z[0], 0,
             x[1], y[1], z[1], 0,

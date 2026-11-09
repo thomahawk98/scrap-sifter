@@ -1,5 +1,6 @@
 import { getBlockDropType } from './block-stats.js';
 import physics from '../systems/physics.js';
+import { getViewBasis } from '../systems/view-basis.js';
 
 export default class World {
     constructor() {
@@ -144,7 +145,8 @@ export default class World {
 
         const collidesWithSelf = physics.anyEntityCollidesWithBlock(block, [player]);
         if (collidesWithSelf) {
-            const dir = [Math.round(Math.sin(player.head.yaw)), 0, Math.round(-Math.cos(player.head.yaw))];
+            const { forward } = getViewBasis(player.orientation);
+            const dir = [Math.round(forward[0]), 0, Math.round(forward[2])];
             block.pos = [block.pos[0] + dir[0], block.pos[1] - 1, block.pos[2] + dir[2]];
         }
 

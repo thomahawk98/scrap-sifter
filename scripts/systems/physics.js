@@ -25,12 +25,13 @@ const Physics = {
         const speed = entity.velocity[axis] * deltaScale;
         if (speed == 0) return;
 
-        // find the new position
-        const newPos = [...entity.pos].map((value, index) => value += (index == axis) ? speed : 0);
+        // Test one axis at a time to keep the cube from tunneling through
+        // corners. Its position is the center, so every axis uses half-extents.
+        const newPos = [...entity.pos];
+        newPos[axis] += speed;
 
-        // check new position for collisions
         const entityShell = { size: entity.size, pos: newPos };
-        const collided = this.anyBlockCollidesWithEntity(world, entityShell);
+        const collided = this.getBlockingBlock(world, entityShell, axis, speed, entity.pos);
         if (!collided) entity.pos = newPos; // move allowed
         else {
             // take damage from colliding with blocks at high velocities
@@ -40,28 +41,55 @@ const Physics = {
 
             // move the entity to the edge of the colliding block
             if (axis === 0) {
-                entity.pos.x = speed > 0
-                    ? collided.pos.x - entity.size.x / 2
-                    : collided.pos.x + 1 + entity.size.x / 2;
+                entity.pos[0] = speed > 0
+                    ? collided.pos[0] - entity.size.x / 2
+                    : collided.pos[0] + 1 + entity.size.x / 2;
             }
             else if (axis === 1) {
                 if (speed > 0) {
                     // Ceiling
-                    entity.pos.y = collided.pos.y - entity.size.y;
+                    entity.pos[1] = collided.pos[1] - entity.size.y / 2;
                 } else {
                     // Floor
-                    entity.pos.y = collided.pos.y + 1;
+                    entity.pos[1] = collided.pos[1] + 1 + entity.size.y / 2;
                 }
             }
             else {
-                entity.pos.z = speed > 0
-                    ? collided.pos.z - entity.size.z / 2
-                    : collided.pos.z + 1 + entity.size.z / 2;
+                entity.pos[2] = speed > 0
+                    ? collided.pos[2] - entity.size.z / 2
+                    : collided.pos[2] + 1 + entity.size.z / 2;
             }
         }
 
         // set the entity onBlock value
         if (axis == 1) entity.onBlock = speed < 0 && collided;
+    },
+    getBlockingBlock(world, entityShell, axis, speed, previousPos) {
+        const half = [entityShell.size.x, entityShell.size.y, entityShell.size.z].map(value => value * 0.5);
+        const min = entityShell.pos.map((value, i) => Math.floor(value - half[i] + 1e-8));
+        const max = entityShell.pos.map((value, i) => Math.floor(value + half[i] - 1e-8));
+        let closestBlock = null;
+        const previousEdge = previousPos[axis] + (speed > 0 ? half[axis] : -half[axis]);
+        let closestDistance = Infinity;
+
+        for (let x = min[0]; x <= max[0]; x++) {
+            for (let y = min[1]; y <= max[1]; y++) {
+                for (let z = min[2]; z <= max[2]; z++) {
+                    const block = world.getBlock(x, y, z);
+                    if (!block || block.type === 'air') continue;
+
+                    const blockCoords = [x, y, z];
+                    const plane = blockCoords[axis] + (speed < 0 ? 1 : 0);
+                    const distance = speed > 0 ? plane - previousEdge : previousEdge - plane;
+                    // Ignore solid cells the cube was already embedded in; only
+                    // clamp to a face crossed by this axis movement.
+                    if (distance < -1e-8 || distance >= closestDistance) continue;
+                    closestBlock = block;
+                    closestDistance = distance;
+                }
+            }
+        }
+        return closestBlock;
     },
     damageEntityFromSpeed(entity, speed) {
         if (entity.vitals == undefined || entity.vitals.health == undefined) return console.log(entity, 'is missing vitals');
@@ -81,12 +109,12 @@ const Physics = {
         const hits = [];
 
         // Determine bounds of the entity hitbox
-        const minX = Math.floor(entityShell.pos[0] - entityShell.size.x * 0.5);
-        const maxX = Math.floor(entityShell.pos[0] + entityShell.size.x * 0.5);
-        const minY = Math.floor(entityShell.pos[1]);
-        const maxY = Math.floor(entityShell.pos[1] + entityShell.size.y);
-        const minZ = Math.floor(entityShell.pos[2] - entityShell.size.z * 0.5);
-        const maxZ = Math.floor(entityShell.pos[2] + entityShell.size.z * 0.5);
+        const minX = Math.floor(entityShell.pos[0] - entityShell.size.x * 0.5 + 1e-8);
+        const maxX = Math.floor(entityShell.pos[0] + entityShell.size.x * 0.5 - 1e-8);
+        const minY = Math.floor(entityShell.pos[1] - entityShell.size.y * 0.5 + 1e-8);
+        const maxY = Math.floor(entityShell.pos[1] + entityShell.size.y * 0.5 - 1e-8);
+        const minZ = Math.floor(entityShell.pos[2] - entityShell.size.z * 0.5 + 1e-8);
+        const maxZ = Math.floor(entityShell.pos[2] + entityShell.size.z * 0.5 - 1e-8);
 
         for (let x = minX; x <= maxX; x++) {
             for (let y = minY; y <= maxY; y++) {
@@ -120,12 +148,12 @@ const Physics = {
             // Compute entity bounds
             const entMin = [
                 entity.pos[0] - entity.size.x / 2,
-                entity.pos[1],
+                entity.pos[1] - entity.size.y / 2,
                 entity.pos[2] - entity.size.z / 2
             ];
             const entMax = [
                 entity.pos[0] + entity.size.x / 2,
-                entity.pos[1] + entity.size.y,
+                entity.pos[1] + entity.size.y / 2,
                 entity.pos[2] + entity.size.z / 2
             ];
 

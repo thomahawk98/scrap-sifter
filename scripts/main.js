@@ -55,11 +55,8 @@ glCanvas.onclick = function () {
 document.addEventListener('mousemove', e => {
     if (document.pointerLockElement == glCanvas) {
         //move player head
-        player.head.yaw += e.movementX * 0.002;
-        player.head.pitch -= e.movementY * 0.002;
+        player.rotateView(e.movementX, e.movementY, mouse.buttons[1]);
 
-        //clamp player neck angle
-        player.head.pitch = Math.clamp(player.head.pitch, -Math.PI / 2 + 0.01, Math.PI / 2 - 0.01);
     } else {
         mouse.x = e.pageX;
         mouse.y = e.pageY;
@@ -217,7 +214,7 @@ function main(timestamp) {
     const debugTexts = [
         `${Math.round(player.pos[0])}, ${Math.round(player.pos[1])}, ${Math.round(player.pos[2])}`,
         `FPS: ${fpsTracker.fps}`, `Mode: ${player.mode}`, `On block: ${player.onBlock}`, '',
-        `FOV: ${camera.fov}`, `Yaw: ${Math.round(camera.yaw * 100) / 100}`, `Pitch: ${Math.round(camera.pitch * 100) / 100}`, '',
+        `FOV: ${camera.fov}`, `View: ${camera.orientation.map(a => Math.round(a * 100) / 100).join(', ')}`, '',
         `Biome: ${biome.name}`, `Seed: ${world.seed}`, `Render Distance: ${world.renderDistance}`, '',
         `Resident Chunks: ${world.chunks.size}`, `Active Chunks: ${chunkManager.getActiveChunkCount()}`,
         `Unmeshed Chunks: ${chunkManager.dirtyChunkQueue.length}`, `Ungenerated Chunks: ${chunkManager.generator.getPendingCount()}`,

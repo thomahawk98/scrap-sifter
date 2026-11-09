@@ -3,6 +3,7 @@ import terrain from '../core/terrain.js';
 import Inventory from '../ui/inventory.js';
 import { raycast } from '../systems/raycast.js';
 import { getBlockMaxHealth } from '../core/block-stats.js';
+import { getViewBasis, rotateLocal } from '../systems/view-basis.js';
 
 export default class Player {
     constructor(world) {
@@ -12,10 +13,9 @@ export default class Player {
         this.pos = [0, 0, 0];
         this.spawnPos = [0, 0, 0];
 
-        this.size = { x: 0.6, y: 1.85, z: 0.6 };
+        this.size = { x: 0.6, y: 0.6, z: 0.6 };
+        this.orientation = [1, 0, 0, 0];
         this.head = {
-            yaw: 0,
-            pitch: 0,
             pos: this.spawnPos,
         };
 
@@ -99,15 +99,17 @@ export default class Player {
     };
 
     updateBody() {
-        //make head follow body
-        this.head.pos = [
-            this.pos[0],
-            this.pos[1] + this.size.y - 0.2,
-            this.pos[2],
-        ];
-
-        this.size.y = this.inputs.keys['shift'] ? 1.5 : 1.8;
+        // Player position is the center of the cube and the camera origin.
+        this.head.pos = [...this.pos];
     };
+
+    rotateView(mouseX, mouseY, roll = false) {
+        const sensitivity = 0.002;
+        const horizontalAxis = roll ? [0, 0, -1] : [0, 1, 0];
+        const horizontalAngle = roll ? mouseX * sensitivity : -mouseX * sensitivity;
+        this.orientation = rotateLocal(this.orientation, horizontalAxis, horizontalAngle);
+        this.orientation = rotateLocal(this.orientation, [1, 0, 0], -mouseY * sensitivity);
+    }
 
     updateVitals() {
         this.vitals.health = Math.max(0, Math.min(this.vitals.health, this.vitals.maxHealth));
@@ -121,7 +123,8 @@ export default class Player {
         if (this.inventory.open) return;
 
         // get the block the player is looking at
-        const hit = raycast(this.head.pos, this.head.yaw, this.head.pitch, world, this.reach);
+        const { forward } = getViewBasis(this.orientation);
+        const hit = raycast(this.head.pos, forward, world, this.reach);
         if (!hit) {
             this.outlinedBlock = null;
             return false
@@ -155,7 +158,7 @@ export default class Player {
 
     updateAcceleration(deltaScale = 1) {
         const keys = this.inputs.keys;
-        const movementSpeed = keys['shift'] ? 0.0125 : keys['q'] ? 0.0325 : 0.02;
+        const movementSpeed = keys['q'] ? 0.0325 : 0.02;
 
         const surfaceTraction = physics.getSurfaceTraction(this);
         const fluidTraction = physics.getFluidTraction(this);
@@ -163,33 +166,35 @@ export default class Player {
 
         const speed = movementSpeed * traction;
 
-        const forward = [Math.sin(this.head.yaw), 0, -Math.cos(this.head.yaw)];
-        const right = [Math.sin(this.head.yaw - Math.PI / 2), 0, -Math.cos(this.head.yaw - Math.PI / 2)];
+        // All movement axes come from the same unrestricted camera frame.
+        const { forward, right, up } = getViewBasis(this.orientation);
 
         let target = [0, 0, 0];
         var accel = [0, 0, 0];
 
         if (keys['w']) target = target.map((v, i) => v + forward[i]);
         if (keys['s']) target = target.map((v, i) => v - forward[i]);
-        if (keys['a']) target = target.map((v, i) => v + right[i]);
-        if (keys['d']) target = target.map((v, i) => v - right[i]);
+        if (keys['a']) target = target.map((v, i) => v - right[i]);
+        if (keys['d']) target = target.map((v, i) => v + right[i]);
+        const jumping = keys[' '] && this.mode !== 'creative' && this.onBlock;
+        if (keys[' '] && this.mode === 'creative') {
+            target = target.map((v, i) => v + up[i]);
+        }
+        if (keys['shift']) target = target.map((v, i) => v - up[i]);
 
-        // Check if movement is needed in XZ plane
-        if (target[0] !== 0 || target[2] !== 0) {
-            // Normalize direction in XZ plane
-            const length = Math.hypot(target[0], target[2]);
-            accel[0] += (target[0] / length) * speed * deltaScale;
-            accel[2] += (target[2] / length) * speed * deltaScale;
+        // Normalize the complete direction so pitching up or down keeps the
+        // same movement speed and works even when looking straight vertically.
+        const targetLength = Math.hypot(...target);
+        if (targetLength > 0) {
+            for (let axis = 0; axis < 3; axis++) {
+                accel[axis] += (target[axis] / targetLength) * speed * deltaScale;
+            }
         }
 
-        // jumping
-        if (keys[' '] && this.onBlock) accel[1] += 0.2 * deltaScale;
-
-        // flight
-        const flightEnabled = this.mode == 'creative';
-        if (flightEnabled) {
-            if (keys[' ']) accel[1] += 0.01 * deltaScale;
-            if (keys['shift']) accel[1] -= 0.01 * deltaScale;
+        // Jump impulse remains strong enough to clear blocks, but follows local
+        // up; the normalized movement vector keeps diagonal input from boosting speed.
+        if (jumping) {
+            for (let axis = 0; axis < 3; axis++) this.velocity[axis] += up[axis] * 0.2 * deltaScale;
         }
 
         //accelerate player
