@@ -36,7 +36,7 @@ export default class Player extends Entity {
         this.inventory = new Inventory('default');
         this.menuOpen = false;
 
-        this.respawn(world);
+        this.respawn();
     }
 
     update(deltaScale = 1, { inputs, world, updateInventory } = {}) {
@@ -62,16 +62,23 @@ export default class Player extends Entity {
         }
 
         //respawn player
-        if (inputs.isDown ? inputs.isDown('respawn') : inputs.keys['enter']) this.respawn(world);
+        if (inputs.isDown ? inputs.isDown('respawn') : inputs.keys['enter']) this.respawn();
 
     };
 
-    respawn(world) {
+    respawn() {
         this.inventory.items = [];
 
         this.velocity = [0, 0, 0];
         this.pos = this.spawnPos;
+        this.health = this.maxHealth;
     };
+
+    // Players return to their spawn immediately for now; a death screen can be
+    // added later without changing damage handling.
+    die() {
+        this.respawn();
+    }
 
     updateBody() {
         // Player position is the center of the cube and the camera origin.
@@ -118,7 +125,7 @@ export default class Player extends Entity {
 
     shootBullet(world) {
         const { forward } = getViewBasis(this.orientation);
-        world.entities.add(new Bullet([...this.pos], forward));
+        world.entities.add(new Bullet([...this.pos], forward, this));
     }
 
     isMouseDown(action) {
@@ -137,7 +144,7 @@ export default class Player extends Entity {
         const isDown = (action, fallback) => this.inputs.isDown
             ? this.inputs.isDown(action)
             : Boolean(keys[fallback]);
-        const movementSpeed = isDown('fastMove', 'q') ? 0.0325 : 0.02;
+        const movementSpeed = isDown('fastMove', 'q') ? 0.05 : 0.025;
 
         const speed = movementSpeed * this.getMovementTraction();
 

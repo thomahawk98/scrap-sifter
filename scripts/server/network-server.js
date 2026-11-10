@@ -138,6 +138,7 @@ function serializeEntity(entity) {
     return {
         id: entity.id, type: entity.type ?? 'entity', pos: [...entity.pos],
         orientation: [...entity.orientation], scale: [...entity.scale], velocity: [...entity.velocity],
+        health: entity.health, maxHealth: entity.maxHealth,
         material: entity.material, visible: entity.visible,
         onBlock: entity.onBlock, outlinedBlock: entity.outlinedBlock,
         perspectiveMode: entity.perspectiveMode, head: entity.head,

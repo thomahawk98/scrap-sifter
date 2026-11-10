@@ -6,6 +6,7 @@ const CHUNK_SIZE = 16;
 const PADDED_SIZE = CHUNK_SIZE + 2;
 const PADDED_PLANE = PADDED_SIZE * PADDED_SIZE;
 const PADDED_VOLUME = PADDED_PLANE * PADDED_SIZE;
+const UNKNOWN_VOXEL = 2;
 
 // Convert small AO coordinate triples to flat offsets once instead of
 // allocating and destructuring them for every visible vertex.
@@ -40,9 +41,9 @@ export default class ChunkMesher {
                 for (let y = -1; y <= CHUNK_SIZE; y++) {
                     for (let x = -1; x <= CHUNK_SIZE; x++) {
                         if (x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) continue;
-                        if (world.isSolidBlock(baseX + x, baseY + y, baseZ + z)) {
-                            occupancy[(x + 1) + (y + 1) * PADDED_SIZE + (z + 1) * PADDED_PLANE] = 1;
-                        }
+                        const state = world.getVoxelState(baseX + x, baseY + y, baseZ + z);
+                        occupancy[(x + 1) + (y + 1) * PADDED_SIZE + (z + 1) * PADDED_PLANE] =
+                            state === null ? UNKNOWN_VOXEL : state ? 1 : 0;
                     }
                 }
             }
@@ -57,7 +58,9 @@ export default class ChunkMesher {
             const paddedIndex = (x + 1) + (y + 1) * PADDED_SIZE + (z + 1) * PADDED_PLANE;
             let mask = 0;
             for (let faceIndex = 0; faceIndex < FACES.length; faceIndex++) {
-                if (!occupancy[paddedIndex + FACES[faceIndex].neighborOffset]) {
+                // Unknown neighbor data suppresses temporary outer faces until
+                // that chunk arrives; known air remains an open visible face.
+                if (occupancy[paddedIndex + FACES[faceIndex].neighborOffset] === 0) {
                     mask |= 1 << faceIndex;
                     faceCount++;
                 }
@@ -91,8 +94,9 @@ export default class ChunkMesher {
                 for (let v = 0; v < 4; v++) {
                     const [vx, vy, vz] = face.verts[v];
                     const ao = face.aoOffsets[v];
-                    const occlusion = occupancy[paddedIndex + ao[0]] +
-                        occupancy[paddedIndex + ao[1]] + occupancy[paddedIndex + ao[2]];
+                    const occlusion = Number(occupancy[paddedIndex + ao[0]] === 1) +
+                        Number(occupancy[paddedIndex + ao[1]] === 1) +
+                        Number(occupancy[paddedIndex + ao[2]] === 1);
                     const shade = 1 - Math.min(3, occlusion) * 0.2;
                     vertices[vertexCursor++] = wx + 0.5 + vx;
                     vertices[vertexCursor++] = wy + 0.5 + vy;

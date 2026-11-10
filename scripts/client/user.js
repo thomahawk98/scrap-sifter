@@ -8,7 +8,7 @@ import { getViewBasis, reverseView } from './shared/view-basis.js';
 
 const CHUNK_MAP_REFRESH_MILLISECONDS = 100;
 const INPUT_SEND_MILLISECONDS = 50;
-const ENTITY_POSITION_INTERPOLATION = 0.1;
+const ENTITY_POSITION_INTERPOLATION = 0.15;
 
 // A User owns one local view and its socket connection; authoritative gameplay
 // and shared world mutations are received from the server as snapshots/events.
@@ -45,17 +45,26 @@ export default class User {
     }
 
     bindSocketEvents() {
+        // start of a new game session
         this.socket.on('session:ready', session => {
+            // clear the previous session data
             this.chunkManager.clear();
             this.world.entities.clear();
-            this.world.entities.set(-1, this.player);
-            this.playerId = session.playerId;
+
+            // update the world with the session data
             this.world.seed = session.world.seed;
             this.world.renderDistance = session.world.renderDistance;
+
+            // add player from session
+            this.playerId = session.playerId;
             this.player.id = this.playerId;
-            this.world.entities.delete(-1);
             this.world.entities.set(this.playerId, this.player);
-            for (const entity of session.entities) this.world.upsertEntity(entity, this.playerId);
+
+            // add other entities from the session
+            for (const entity of session.entities)
+                this.world.upsertEntity(entity, this.playerId);
+
+            // Keep the server's per-player request limit aligned with this view.
             this.socket.emit('render-distance:set', this.world.renderDistance);
         });
         this.socket.on('player:joined', player => this.world.upsertEntity(player, this.playerId));
@@ -69,6 +78,8 @@ export default class User {
                 visibleIds.add(entity.id);
                 this.world.upsertEntity(entity, this.playerId);
             }
+
+            // Remove entities omitted from this client's visibility snapshot.
             for (const id of this.world.entities.keys()) if (!visibleIds.has(id)) this.world.removeEntity(id);
         });
         this.socket.on('disconnect', () => {
@@ -95,6 +106,7 @@ export default class User {
         }
         // Ease every replica, including the local player, toward authoritative
         // server positions instead of snapping backward on each snapshot.
+        // This smooths the network snapshots while keeping movement responsive.
         for (const entity of this.world.entities.values()) {
             if (!entity.targetPos) continue;
             for (let axis = 0; axis < 3; axis++) {
@@ -117,7 +129,7 @@ export default class User {
         const player = this.player, world = this.world, chunkManager = this.chunkManager;
         const debugTexts = [
             `${Math.round(player.pos[0])}, ${Math.round(player.pos[1])}, ${Math.round(player.pos[2])}`,
-            `FPS: ${fps}`, `On block: ${player.onBlock}`, '',
+            `FPS: ${fps}`, `Health: ${player.health}/${player.maxHealth}`, `On block: ${player.onBlock}`, '',
             `FOV: ${this.camera.fov}`, `View: ${this.camera.orientation.map(value => Math.round(value * 100) / 100).join(', ')}`, '',
             `Seed: ${world.seed}`, `Render Distance: ${world.renderDistance}`, '',
             `Resident Chunks: ${world.chunks.size}`, `Active Chunks: ${chunkManager.getActiveChunkCount()}`,

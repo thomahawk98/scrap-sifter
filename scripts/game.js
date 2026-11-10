@@ -7,6 +7,8 @@ export default class Game {
     constructor({ keyBindings = {}, mouseBindings = {} } = {}) {
         this.glCanvas = document.getElementById('glcanvas');
         this.hudCanvas = document.getElementById('hudcanvas');
+
+        // Watch viewport and element-size changes so docked tools resize the game.
         this.handleResize = () => this.resizeCanvases();
         window.addEventListener('resize', this.handleResize);
         window.visualViewport?.addEventListener('resize', this.handleResize);
@@ -17,6 +19,7 @@ export default class Game {
         }
         this.resizeCanvases();
 
+        // Compose the browser-side transport and presentation components.
         this.socket = window.io();
         this.renderer = new Renderer(this.glCanvas);
         this.renderer.resize();
@@ -34,14 +37,16 @@ export default class Game {
             const bounds = canvas.getBoundingClientRect();
             const width = Math.max(1, Math.round(bounds.width));
             const height = Math.max(1, Math.round(bounds.height));
-            // Assigning either attribute clears the canvas, so only do it when
-            // the rendered CSS size actually changed.
+
+            // Attribute changes clear canvases, so update only when CSS size changed.
             if (canvas.width !== width || canvas.height !== height) {
                 canvas.width = width;
                 canvas.height = height;
                 resized = true;
             }
         }
+
+        // WebGL retains its previous viewport until it is explicitly updated.
         if (resized) this.renderer?.resize();
     }
 }

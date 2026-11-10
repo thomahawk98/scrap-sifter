@@ -17,6 +17,8 @@ export default class Entity {
         this.velocity = [0, 0, 0];
         this.visible = true;
         this.onBlock = false;
+        this.maxHealth = 100;
+        this.health = this.maxHealth;
     }
 
     // Shared acceleration, velocity integration, collision, and damping path.
@@ -26,6 +28,20 @@ export default class Entity {
 
     getMovementTraction() {
         return Math.max(physics.getSurfaceTraction(this), physics.getFluidTraction(this));
+    }
+
+    takeDamage(amount, source = null) {
+        const damage = Number.isFinite(amount) ? Math.max(0, amount) : 0;
+        if (damage === 0 || this.health <= 0) return false;
+
+        this.health = Math.max(0, this.health - damage);
+        if (this.health === 0) this.die(source);
+        return true;
+    }
+
+    // Specialized entities can override this to choose their own death behavior.
+    die() {
+        this.visible = false;
     }
 
     update(deltaScale = 1, { world } = {}) {

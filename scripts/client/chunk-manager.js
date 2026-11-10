@@ -1,6 +1,7 @@
 import ChunkMesher from './chunk-mesher.js';
 
 const CHUNK_SIZE = 16;
+const UNKNOWN_VOXEL = 2;
 
 // Tracks the local view radius, requests server voxel data, and builds/uploads
 // meshes without sending render geometry over the network.
@@ -98,9 +99,24 @@ export default class ClientChunkManager {
             const chunk = this.world.chunks.get(key);
             if (chunk) chunk.residency = 'active';
         }
+        const removedPositions = [];
         for (const key of this.desired) if (!next.has(key)) {
             this.renderer.deleteChunk(key);
             this.world.chunks.delete(key);
+            removedPositions.push(key.split(',').map(Number));
+        }
+        // Remaining edge chunks now have unknown neighbors where removed data
+        // used to be. Rebuild those meshes so they stop drawing stale border faces.
+        for (const [cx, cy, cz] of removedPositions) {
+            for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+                if (!dx && !dy && !dz) continue;
+                const neighborKey = this.world.getChunkKey(cx + dx, cy + dy, cz + dz);
+                const neighbor = next.has(neighborKey) ? this.world.chunks.get(neighborKey) : null;
+                if (neighbor?.dataStatus === 'ready' && !neighbor.empty) {
+                    neighbor.invalidateMesh();
+                    this.queue(neighbor);
+                }
+            }
         }
         this.desired = next;
         this.lastCenter = center;
@@ -155,9 +171,9 @@ export default class ClientChunkManager {
         const baseX = chunk.cx * CHUNK_SIZE, baseY = chunk.cy * CHUNK_SIZE, baseZ = chunk.cz * CHUNK_SIZE;
         for (let z = -1; z <= CHUNK_SIZE; z++) for (let y = -1; y <= CHUNK_SIZE; y++) for (let x = -1; x <= CHUNK_SIZE; x++) {
             if (x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) continue;
-            if (this.world.isSolidBlock(baseX + x, baseY + y, baseZ + z)) {
-                occupancy[(x + 1) + (y + 1) * paddedSize + (z + 1) * paddedPlane] = 1;
-            }
+            const state = this.world.getVoxelState(baseX + x, baseY + y, baseZ + z);
+            occupancy[(x + 1) + (y + 1) * paddedSize + (z + 1) * paddedPlane] =
+                state === null ? UNKNOWN_VOXEL : state ? 1 : 0;
         }
         return occupancy;
     }

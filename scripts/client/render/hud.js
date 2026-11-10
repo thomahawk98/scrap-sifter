@@ -35,7 +35,40 @@ export default class Hud {
         }
 
         this.drawDebugTexts(ctx, debugTexts);
+        this.drawHealthBar(ctx, player);
         this.drawMaps(ctx, player);
+    }
+
+    drawHealthBar(ctx, player) {
+        const width = Math.min(220, Math.max(0, this.canvas.width - 32));
+        const height = 16;
+        const x = this.canvas.width - width - 16;
+        const y = 24;
+        const maxHealth = Math.max(1, player.maxHealth || 100);
+        const health = Math.max(0, Math.min(maxHealth, player.health || 0));
+        const fraction = health / maxHealth;
+
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+        ctx.beginPath();
+        ctx.roundRect(x, y, width, height, 4);
+        ctx.fill();
+
+        if (fraction > 0) {
+            ctx.fillStyle = fraction > 0.5 ? '#45b649' : fraction > 0.25 ? '#e4b83f' : '#d8473f';
+            ctx.beginPath();
+            ctx.roundRect(x, y, width * fraction, height, 4);
+            ctx.fill();
+        }
+
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 13px Tahoma';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`${Math.ceil(health)} / ${maxHealth}`, x + width, y - 4);
+        ctx.restore();
     }
 
     drawCrosshair(ctx, cx, cy) {

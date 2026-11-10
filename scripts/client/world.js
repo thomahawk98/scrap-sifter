@@ -19,7 +19,7 @@ export default class ClientWorld {
         const player = createEntityReplica({
             id: -1, type: 'player', pos: [0, 0, 0], orientation: [1, 0, 0, 0],
             scale: [0.6, 0.6, 0.6], velocity: [0, 0, 0], material: { color: [1, 0, 0] },
-            perspectiveMode: 0, onBlock: false,
+            perspectiveMode: 0, onBlock: false, health: 100, maxHealth: 100,
         });
         player.head = { pos: player.pos };
         player.inventory = createInventory();
@@ -36,9 +36,12 @@ export default class ClientWorld {
         return block ? { pos: [x, y, z], ...block } : { pos: [x, y, z], type: 'air' };
     }
     isSolidBlock(x, y, z) {
+        return this.getVoxelState(x, y, z) === true;
+    }
+    getVoxelState(x, y, z) {
         const [cx, cy, cz] = this.getChunkCoords(x, y, z);
         const chunk = this.getChunk(cx, cy, cz);
-        if (!chunk?.blocks) return false;
+        if (!chunk?.blocks) return null;
         const index = chunk.getIndex(modulo(x, 16), modulo(y, 16), modulo(z, 16));
         return chunk.blocks[index] !== 0;
     }
@@ -70,10 +73,13 @@ export default class ClientWorld {
 
     upsertEntity(data, localEntityId = null) {
         let entity = this.entities.get(data.id);
+
+        // Create a local replica when this entity has not been seen before.
         if (!entity) {
             entity = createEntityReplica(data);
             this.entities.set(data.id, entity);
         }
+
         if (data.id === localEntityId) {
             const inventoryData = data.inventory ?? {};
             // The local camera owns its orientation to avoid network snapshots
@@ -123,6 +129,7 @@ function createEntityReplica(data) {
         ...data, pos: [...data.pos], targetPos: [...data.pos],
         orientation: [...(data.orientation ?? [1, 0, 0, 0])],
         scale: [...(data.scale ?? [1, 1, 1])], velocity: [...(data.velocity ?? [0, 0, 0])],
+        health: data.health ?? 100, maxHealth: data.maxHealth ?? 100,
         material: data.material ?? { color: [0, 0, 0] }, geometry: CUBE_GEOMETRY,
         rotateView(mouseX, mouseY, roll = false) {
             const sensitivity = 0.002;
