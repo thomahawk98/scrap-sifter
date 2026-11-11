@@ -114,3 +114,15 @@ export function getBlockDropType(type) {
             return type; // default drop is the block itself
     }
 }
+
+// Blast resistance is looked up by type; individual block instances never
+// accumulate damage or store mutable health.
+const BLOCK_HEALTH_BY_TYPE = {
+    stone: 45,
+};
+
+const DEFAULT_BLOCK_HEALTH = 30;
+
+export function getBlockHealth(type) {
+    return BLOCK_HEALTH_BY_TYPE[type] ?? DEFAULT_BLOCK_HEALTH;
+}

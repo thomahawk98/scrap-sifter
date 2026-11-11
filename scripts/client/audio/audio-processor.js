@@ -7,7 +7,7 @@ const DISTANCE_MUFFLE_AMOUNT = 0.95;
 const DISTANCE_MUFFLE_CURVE = 0.9;
 const DISTANCE_VOLUME_CURVE = 2;
 const OCCLUSION_VOLUME_TRANSMISSION = 0.55;
-const OCCLUSION_RAY_RADIUS = 1;
+const OCCLUSION_RAY_RADIUS = 2;
 
 // All sound sources, including local UI sounds and server events, pass through
 // this processor so listener-specific effects stay entirely client-side.
@@ -134,7 +134,8 @@ export default class AudioProcessor {
         // Combine independent filters so distance and walls both contribute.
         const muffle = 1 - (1 - baseMuffle) * (1 - distanceMuffle) * occlusion.transmission;
         const distanceGain = (1 - distanceRatio) ** DISTANCE_VOLUME_CURVE;
-        const volume = clamp(event.volume ?? 1, 0, 1) * distanceGain * occlusion.transmission;
+        // Obstacles only remove high frequencies; distance alone controls loudness.
+        const volume = clamp(event.volume ?? 1, 0, 1) * distanceGain;
 
         return {
             volume,
@@ -186,8 +187,9 @@ export default class AudioProcessor {
         for (let step = 1; step < steps; step++) {
             const amount = step / steps;
             const point = origin.map((value, axis) => value + vector[axis] * amount);
-            const state = this.world.getVoxelState(...point.map(Math.floor));
-            if (state === true) solidCells.add(point.map(Math.floor).join(','));
+            const cell = point.map(Math.floor);
+            const state = this.world.getVoxelState(...cell);
+            if (state === true) solidCells.add(cell.join(','));
         }
         return OCCLUSION_VOLUME_TRANSMISSION ** solidCells.size;
     }

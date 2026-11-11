@@ -3,13 +3,14 @@ import { raycast } from '../systems/raycast.js';
 import { getViewBasis, rotateLocal } from '../systems/view-basis.js';
 import Entity from './entity.js';
 import Bullet from './bullet.js';
+import Bomb from './bomb.js';
 import { createCubeGeometry } from '../core/entity-geometry.js';
 
 const PLAYER_GEOMETRY = createCubeGeometry();
 
 export default class Player extends Entity {
     constructor(world) {
-        super({ geometry: PLAYER_GEOMETRY, scale: [0.6, 0.6, 0.6], material: { color: [1, 0, 0] } });
+        super({ geometry: PLAYER_GEOMETRY, scale: [0.8, 0.8, 0.8], material: { color: [1, 0, 0] } });
         this.type = 'player';
 
         this.spawnPos = [0, 0, 0];
@@ -100,8 +101,9 @@ export default class Player extends Entity {
         if (this.inventory.open) return;
 
         if (this.isMouseDown('shoot') && this.shootReload <= 0) {
-            this.shootBullet(world);
-            this.shootReload = 8;
+            this.shootBomb(world);
+            // this.shootBullet(world); // Keep the previous projectile available for easy switching.
+            this.shootReload = 18;
         }
 
         // get the block the player is looking at
@@ -127,6 +129,12 @@ export default class Player extends Entity {
         const { forward } = getViewBasis(this.orientation);
         world.audio?.playWorld('blaster-shot', this.pos, { volume: 0.8 });
         world.entities.add(new Bullet([...this.pos], forward, this));
+    }
+
+    shootBomb(world) {
+        const { forward } = getViewBasis(this.orientation);
+        world.audio?.playWorld('bomb-launch.mp3', this.pos, { volume: 0.8 });
+        world.entities.add(new Bomb([...this.pos], forward, this));
     }
 
     isMouseDown(action) {
