@@ -2,7 +2,11 @@ import './systems/math-patch.js';
 import World from './core/world.js';
 import ChunkManager from './chunks/chunk-manager.js';
 import Player from './entities/player.js';
-import { createTestEntity } from './entities/test-entity.js';
+import Target from './entities/target.js';
+
+const TARGET_CHUNK_SPAWN_CHANCE = 0.2;
+const TARGETS_PER_SPAWN_CHUNK = 3;
+const MAX_ACTIVE_TARGETS = 96;
 
 // In-process server boundary. It owns world state and generation; callers use
 // this small API so a network transport can replace direct references later.
@@ -10,9 +14,9 @@ export default class ServerRuntime {
     constructor({ onChunkReady = () => {}, onBlockChanged = () => {}, spawnInitialPlayer = true } = {}) {
         this.world = new World();
         this.world.onBlockChanged = onBlockChanged;
-        this.world.entities.add(createTestEntity());
         if (spawnInitialPlayer) this.addPlayer();
-        this.chunkManager = new ChunkManager(this.world, onChunkReady);
+        this.hasSpawnedInitialTarget = false;
+        this.chunkManager = new ChunkManager(this.world, onChunkReady, chunk => this.spawnTargetForChunk(chunk));
         this.playerInputs = new Map();
     }
 
@@ -24,6 +28,45 @@ export default class ServerRuntime {
     addPlayer(player) {
         player ??= new Player(this.world);
         return this.world.addPlayer(player);
+    }
+
+    spawnTargetForChunk(chunk) {
+        const activeTargets = this.pruneDistantTargets();
+        if (activeTargets >= MAX_ACTIVE_TARGETS) return;
+
+        // Always place the first target in the first generated chunk with
+        // usable space; later chunks add a sparse population across the world.
+        if (this.hasSpawnedInitialTarget && Math.random() >= TARGET_CHUNK_SPAWN_CHANCE) return;
+
+        for (let count = 0; count < TARGETS_PER_SPAWN_CHUNK && activeTargets + count < MAX_ACTIVE_TARGETS; count++) {
+            const target = Target.createForChunk(chunk);
+            if (!target) break;
+            this.world.entities.add(target);
+            this.hasSpawnedInitialTarget = true;
+        }
+    }
+
+    pruneDistantTargets() {
+        const players = [...this.world.getPlayers()];
+        const activeTargets = [];
+
+        for (const entity of this.world.entities.values()) {
+            if (entity.type !== 'target') continue;
+
+            // Keep the bounded target population near connected players. This
+            // frees slots for newly generated regions as players explore.
+            const nearPlayer = players.some(player => {
+                const dx = entity.pos[0] - player.pos[0];
+                const dy = entity.pos[1] - player.pos[1];
+                const dz = entity.pos[2] - player.pos[2];
+                const radius = ((player.renderDistance ?? this.world.renderDistance) + 1) * this.world.CHUNK_SIZE;
+                return dx * dx + dy * dy + dz * dz <= radius * radius;
+            });
+
+            if (nearPlayer || players.length === 0) activeTargets.push(entity);
+            else this.world.entities.remove(entity);
+        }
+        return activeTargets.length;
     }
 
     removePlayer(playerOrId) {

@@ -38,7 +38,6 @@ player in game (so you can see yourself in f5)
 
 FIX:
 move all the way bug
-friction in air bug (player.onBlock) (creative mode)
 add more chunk-generation-workers, and make them process chunks in batches
 
 

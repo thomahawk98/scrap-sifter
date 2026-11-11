@@ -19,7 +19,7 @@ export default class ClientWorld {
         const player = createEntityReplica({
             id: -1, type: 'player', pos: [0, 0, 0], orientation: [1, 0, 0, 0],
             scale: [0.6, 0.6, 0.6], velocity: [0, 0, 0], material: { color: [1, 0, 0] },
-            perspectiveMode: 0, onBlock: false, health: 100, maxHealth: 100,
+            perspectiveMode: 0, health: 100, maxHealth: 100,
         });
         player.head = { pos: player.pos };
         player.inventory = createInventory();

@@ -125,6 +125,7 @@ export default class Player extends Entity {
 
     shootBullet(world) {
         const { forward } = getViewBasis(this.orientation);
+        world.audio?.playWorld('blaster-shot', this.pos, { volume: 0.8 });
         world.entities.add(new Bullet([...this.pos], forward, this));
     }
 

@@ -4,11 +4,12 @@ import ChunkGenerator from './chunk-generator.js';
 // Server chunk storage and generation. Clients subscribe to coordinates; only
 // completed block data crosses the socket, while meshing remains client-side.
 export default class ChunkManager {
-    constructor(world, onChunkReady = () => {}) {
+    constructor(world, onChunkReady = () => {}, onChunkGenerated = () => {}) {
         this.world = world;
         this.chunks = world.chunks;
         this.generator = new ChunkGenerator(this);
         this.onChunkReady = onChunkReady;
+        this.onChunkGenerated = onChunkGenerated;
         this.requestedBy = new Map();
     }
 
@@ -55,6 +56,7 @@ export default class ChunkManager {
         const chunk = this.chunks.get(request.key);
         if (chunk !== request.chunk || chunk.revision !== request.revision) return;
         chunk.setBlockData(data.voxels, data.empty);
+        this.onChunkGenerated(chunk);
         for (const playerId of this.requestedBy.get(request.key) ?? []) {
             this.onChunkReady(playerId, this.serialize(chunk));
         }

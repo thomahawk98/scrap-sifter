@@ -3,6 +3,7 @@ import physics from '../systems/physics.js';
 import { getViewBasis } from '../systems/view-basis.js';
 import EntityManager from '../entities/entity-manager.js';
 import PlayerMovementTracker from '../systems/player-movement-tracker.js';
+import WorldAudioSystem from '../systems/world-audio.js';
 
 export default class World {
     constructor() {
@@ -19,6 +20,7 @@ export default class World {
         this.entities = new EntityManager();
         this.players = new Map();
         this.playerTrackers = new Map();
+        this.audio = new WorldAudioSystem();
         this.onBlockChanged = () => {};
 
         this.update();

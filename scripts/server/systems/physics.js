@@ -9,12 +9,10 @@ const Physics = {
         }
 
         // damp velocity
-        const surfaceFriction = this.getSurfaceFriction(entity);
         const fluidFriction = this.getFluidFriction(entity);
 
-        const surfaceDamping = 1 - surfaceFriction;
         const fluidDamping = 1 - fluidFriction;
-        const damping = Math.pow(surfaceDamping * fluidDamping, deltaScale);
+        const damping = Math.pow(fluidDamping, deltaScale);
 
         entity.velocity = entity.velocity.map(a => a * damping);
 
@@ -47,8 +45,6 @@ const Physics = {
                 : collided.pos[axis] + 1 + halfExtent;
         }
 
-        // set the entity onBlock value
-        if (axis == 1) entity.onBlock = speed < 0 && collided;
         return collided ? { block: collided, speed } : null;
     },
     getBlockingBlock(world, entity, axis, speed) {
@@ -161,20 +157,6 @@ const Physics = {
         }
 
         return hits;
-    },
-    getSurfaceFriction(entity) {
-        if (!entity.onBlock) return 0;
-        switch (entity.onBlock.type) {
-            case 'ice': return 0.02;
-            default: return 0.2;
-        }
-    },
-    getSurfaceTraction(entity) {
-        if (!entity.onBlock) return 0;
-        switch (entity.onBlock.type) {
-            case 'ice': return 0.25;
-            default: return 1;
-        }
     },
     getFluidFriction(entity) {
         if (!entity.inFluid) return 0.01; // air resistance

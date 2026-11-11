@@ -99,6 +99,7 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
         runtime.updateWorld(FIXED_STEP);
         runtime.updateEntities(1);
         runtime.updateChunks();
+        dispatchAudioEvents(runtime.world.audio.drainEvents(), runtime, connectedPlayers, io);
         if (++tick % SNAPSHOT_INTERVAL !== 0) return;
         const entities = [...runtime.world.entities.values()];
         for (const [playerId, socket] of connectedPlayers) {
@@ -134,13 +135,45 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
     return { app, httpServer, io, runtime };
 }
 
+function dispatchAudioEvents(events, runtime, connectedPlayers, io) {
+    for (const event of events) {
+        if (event.scope === 'global') {
+            io.emit('audio:play', event);
+            continue;
+        }
+
+        if (event.scope === 'player') {
+            const player = runtime.getPlayer(event.playerId);
+            if (!player) continue;
+            const playerEvent = event.position
+                ? { ...event, distance: distanceBetween(event.position, player.pos) }
+                : event;
+            io.to(String(event.playerId)).emit('audio:play', playerEvent);
+            continue;
+        }
+
+        if (event.scope !== 'world') continue;
+        for (const [playerId, socket] of connectedPlayers) {
+            const player = runtime.getPlayer(playerId);
+            if (!player) continue;
+            const distance = distanceBetween(event.position, player.pos);
+            if (distance > event.maxDistance) continue;
+            socket.emit('audio:play', { ...event, distance });
+        }
+    }
+}
+
+function distanceBetween(first, second) {
+    return Math.hypot(first[0] - second[0], first[1] - second[1], first[2] - second[2]);
+}
+
 function serializeEntity(entity) {
     return {
         id: entity.id, type: entity.type ?? 'entity', pos: [...entity.pos],
         orientation: [...entity.orientation], scale: [...entity.scale], velocity: [...entity.velocity],
         health: entity.health, maxHealth: entity.maxHealth,
         material: entity.material, visible: entity.visible,
-        onBlock: entity.onBlock, outlinedBlock: entity.outlinedBlock,
+        outlinedBlock: entity.outlinedBlock,
         perspectiveMode: entity.perspectiveMode, head: entity.head,
         inventory: entity.inventory ? {
             items: entity.inventory.items, selectedSlot: entity.inventory.selectedSlot,

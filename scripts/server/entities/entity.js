@@ -16,7 +16,6 @@ export default class Entity {
         this.material = { color: [1, 1, 1], texture: null, ...material };
         this.velocity = [0, 0, 0];
         this.visible = true;
-        this.onBlock = false;
         this.maxHealth = 100;
         this.health = this.maxHealth;
         // Tune these per entity type to control which impacts cause damage.
@@ -30,7 +29,7 @@ export default class Entity {
     }
 
     getMovementTraction() {
-        return Math.max(physics.getSurfaceTraction(this), physics.getFluidTraction(this));
+        return physics.getFluidTraction(this);
     }
 
     takeDamage(amount, source = null) {

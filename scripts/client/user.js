@@ -4,6 +4,7 @@ import Hud from './render/hud.js';
 import InventoryView from './ui/inventory-view.js';
 import ClientWorld from './world.js';
 import ClientChunkManager from './chunk-manager.js';
+import AudioProcessor from './audio/audio-processor.js';
 import { getViewBasis, reverseView } from './shared/view-basis.js';
 
 const CHUNK_MAP_REFRESH_MILLISECONDS = 100;
@@ -22,6 +23,13 @@ export default class User {
         this.inventoryView = new InventoryView(this.player);
         this.camera = new Camera(this.player, 90, 0.1, 200, { getViewBasis, reverseView });
         this.hud = new Hud(hudCanvas, { getViewBasis });
+        this.audio = new AudioProcessor({
+            world: this.world,
+            getListener: () => ({
+                position: this.player.head?.pos ?? this.player.pos,
+                right: getViewBasis(this.player.orientation).right,
+            }),
+        });
         this.chunkManager = new ClientChunkManager(this.world, socket, renderer);
         this.lastChunkMapRefresh = 0;
         this.lastInputSent = 0;
@@ -71,6 +79,7 @@ export default class User {
         this.socket.on('player:left', ({ id }) => this.world.removeEntity(id));
         this.socket.on('chunk:data', data => this.chunkManager.receive(data));
         this.socket.on('block:update', change => this.chunkManager.onBlockChanged(change));
+        this.socket.on('audio:play', event => this.audio.play(event));
         this.socket.on('world:snapshot', snapshot => {
             this.world.daylight = snapshot.daylight;
             const visibleIds = new Set();
@@ -129,7 +138,7 @@ export default class User {
         const player = this.player, world = this.world, chunkManager = this.chunkManager;
         const debugTexts = [
             `${Math.round(player.pos[0])}, ${Math.round(player.pos[1])}, ${Math.round(player.pos[2])}`,
-            `FPS: ${fps}`, `Health: ${player.health}/${player.maxHealth}`, `On block: ${player.onBlock}`, '',
+            `FPS: ${fps}`, `Health: ${player.health}/${player.maxHealth}`, '',
             `FOV: ${this.camera.fov}`, `View: ${this.camera.orientation.map(value => Math.round(value * 100) / 100).join(', ')}`, '',
             `Seed: ${world.seed}`, `Render Distance: ${world.renderDistance}`, '',
             `Resident Chunks: ${world.chunks.size}`, `Active Chunks: ${chunkManager.getActiveChunkCount()}`,
