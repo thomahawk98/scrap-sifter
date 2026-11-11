@@ -32,12 +32,19 @@ export default class Entity {
         return physics.getFluidTraction(this);
     }
 
-    takeDamage(amount, source = null) {
+    takeDamage(amount, source = null, world = null) {
         const damage = Number.isFinite(amount) ? Math.max(0, amount) : 0;
         if (damage === 0 || this.health <= 0) return false;
 
         this.health = Math.max(0, this.health - damage);
-        if (this.health === 0) this.die(source);
+        if (this.health === 0) {
+            world?.emitParticleEvent({
+                type: 'entity-death',
+                position: [...this.pos],
+                color: [...(this.material.color ?? [1, 1, 1])],
+            });
+            this.die(source);
+        }
         return true;
     }
 

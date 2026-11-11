@@ -36,7 +36,7 @@ export default class Bullet extends Entity {
         // explicitly and only damage the first overlapping non-bullet entity.
         for (const target of world.entities.values()) {
             if (target === this || target === this.owner || target.type === 'bullet' || !overlaps(this, target)) continue;
-            target.takeDamage(this.damage, this);
+            target.takeDamage(this.damage, this, world);
             world.entities.remove(this);
             return;
         }

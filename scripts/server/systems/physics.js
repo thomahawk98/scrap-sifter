@@ -20,7 +20,7 @@ const Physics = {
         // damage when a corner touches multiple blocks at the same time.
         if (impactSpeed > entity.impactDamageThreshold) {
             const damage = (impactSpeed - entity.impactDamageThreshold) * entity.impactDamageMultiplier;
-            entity.takeDamage(damage, entity.collidedBlock);
+            entity.takeDamage(damage, entity.collidedBlock, world);
         }
     },
     tryToMove(entity, axis, world, deltaScale = 1) {

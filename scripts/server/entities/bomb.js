@@ -48,6 +48,7 @@ export default class Bomb extends Entity {
         if (this.exploded) return;
         this.exploded = true;
         world.audio?.playWorld('explosion.mp3', this.pos, { volume: 1 });
+        world.emitParticleEvent({ type: 'explosion', position: [...this.pos] });
 
         const min = this.pos.map(value => Math.floor(value - this.EXPLOSION_RADIUS));
         const max = this.pos.map(value => Math.floor(value + this.EXPLOSION_RADIUS));
@@ -88,7 +89,7 @@ export default class Bomb extends Entity {
             // Players, including the shooter, take blast damage. Projectiles
             // are affected by the impulse but remain intact as projectiles.
             if (entity.type !== 'bullet' && entity.type !== 'bomb') {
-                entity.takeDamage(this.MAX_EXPLOSION_DAMAGE * blastPower, this);
+                entity.takeDamage(this.MAX_EXPLOSION_DAMAGE * blastPower, this, world);
             }
         }
 

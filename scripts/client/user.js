@@ -5,7 +5,9 @@ import InventoryView from './ui/inventory-view.js';
 import ClientWorld from './world.js';
 import ClientChunkManager from './chunk-manager.js';
 import AudioProcessor from './audio/audio-processor.js';
+import ParticleSystem from './systems/particle-system.js';
 import { getViewBasis, reverseView } from './shared/view-basis.js';
+import { getBlockFaceColor } from './shared/block-stats.js';
 
 const CHUNK_MAP_REFRESH_MILLISECONDS = 100;
 const INPUT_SEND_MILLISECONDS = 50;
@@ -20,6 +22,7 @@ export default class User {
         this.world = new ClientWorld();
         this.playerId = null;
         this.player = this.world.createLocalPlayer();
+        this.particles = new ParticleSystem();
         this.inventoryView = new InventoryView(this.player, slot => socket.emit('inventory:click', slot));
         this.camera = new Camera(this.player, 90, 0.1, 200, { getViewBasis, reverseView });
         this.hud = new Hud(hudCanvas, { getViewBasis });
@@ -78,7 +81,14 @@ export default class User {
         this.socket.on('player:joined', player => this.world.upsertEntity(player, this.playerId));
         this.socket.on('player:left', ({ id }) => this.world.removeEntity(id));
         this.socket.on('chunk:data', data => this.chunkManager.receive(data));
-        this.socket.on('block:update', change => this.chunkManager.onBlockChanged(change));
+        this.socket.on('block:update', change => {
+            if (change.previousBlock && change.block?.type === 'air' && change.previousBlock.type !== 'air') {
+                const position = change.blockPos.map(value => value + 0.5);
+                this.particles.spawnBlockBreak(position, getBlockFaceColor(change.previousBlock.type));
+            }
+            this.chunkManager.onBlockChanged(change);
+        });
+        this.socket.on('particle:spawn', event => this.particles.handleEvent(event));
         this.socket.on('audio:play', event => this.audio.play(event));
         this.socket.on('world:snapshot', snapshot => {
             this.world.daylight = snapshot.daylight;
@@ -107,6 +117,7 @@ export default class User {
             ? 1
             : Math.min(0.1, (timestamp - this.previousUpdateTime) / 1000) * 60;
         this.previousUpdateTime = timestamp;
+        this.particles.update(deltaScale);
         this.updateInventory(deltaScale);
         if (this.playerId !== null) this.chunkManager.update(this.player);
         if (timestamp - this.lastInputSent >= INPUT_SEND_MILLISECONDS && this.playerId !== null) {
@@ -132,7 +143,7 @@ export default class User {
         this.lastChunkMapRefresh = timestamp;
     }
 
-    render() { this.renderer.render(this.world, this.camera, this.player); }
+    render() { this.renderer.render(this.world, this.camera, this.player, this.particles); }
 
     draw(fps) {
         const player = this.player, world = this.world, chunkManager = this.chunkManager;

@@ -1,6 +1,7 @@
 // src/render/Renderer.js
 import * as shaders from './shaders.js';
 import EntityRenderer from './entity-renderer.js';
+import ParticleRenderer from './particle-renderer.js';
 
 function getOutlineVertices(x, y, z) {
     const corners = [
@@ -88,6 +89,7 @@ export default class Renderer {
                 materialColor: this.worldUniforms.materialColor,
             },
         );
+        this.particleRenderer = new ParticleRenderer(gl);
 
         // Get attribute / uniform locations for outline program
         this.outlineAttribs = {
@@ -192,7 +194,7 @@ export default class Renderer {
 
     hasChunk(key) { return this.chunkBuffers.has(key); }
 
-    render(world, camera, player) {
+    render(world, camera, player, particleSystem = null) {
         const gl = this.gl;
 
         const renderDistance = world.renderDistance * world.CHUNK_SIZE;
@@ -235,6 +237,9 @@ export default class Renderer {
         for (const entity of world.entities.values()) {
             if (entity.visible && entity.geometry) this.entityRenderer.render(entity, view, proj);
         }
+
+        // Effects are translucent billboards, drawn after opaque world geometry.
+        if (particleSystem) this.particleRenderer.render(particleSystem.particles, camera, view, proj);
 
         //render outlined block
         if (player.outlinedBlock) {

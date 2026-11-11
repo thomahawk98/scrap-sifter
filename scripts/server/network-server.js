@@ -105,6 +105,7 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
         runtime.updateEntities(1);
         runtime.updateChunks();
         dispatchAudioEvents(runtime.world.audio.drainEvents(), runtime, connectedPlayers, io);
+        dispatchParticleEvents(runtime.world.drainParticleEvents(), runtime, connectedPlayers);
         if (++tick % SNAPSHOT_INTERVAL !== 0) return;
         const entities = [...runtime.world.entities.values()];
         for (const [playerId, socket] of connectedPlayers) {
@@ -164,6 +165,18 @@ function dispatchAudioEvents(events, runtime, connectedPlayers, io) {
             const distance = distanceBetween(event.position, player.pos);
             if (distance > event.maxDistance) continue;
             socket.emit('audio:play', { ...event, distance });
+        }
+    }
+}
+
+function dispatchParticleEvents(events, runtime, connectedPlayers) {
+    for (const event of events) {
+        for (const [playerId, socket] of connectedPlayers) {
+            const player = runtime.getPlayer(playerId);
+            if (!player) continue;
+            const maxDistance = ((player.renderDistance ?? runtime.world.renderDistance) + 1) * runtime.world.CHUNK_SIZE;
+            if (distanceBetween(event.position, player.pos) > maxDistance) continue;
+            socket.emit('particle:spawn', event);
         }
     }
 }

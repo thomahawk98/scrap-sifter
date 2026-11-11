@@ -21,6 +21,7 @@ export default class World {
         this.players = new Map();
         this.playerTrackers = new Map();
         this.audio = new WorldAudioSystem();
+        this.particleEvents = [];
         this.onBlockChanged = () => {};
 
         this.update();
@@ -116,10 +117,12 @@ export default class World {
         const ly = Math.modulo(y, this.CHUNK_SIZE);
         const lz = Math.modulo(z, this.CHUNK_SIZE);
 
+        const previousBlock = this.getBlock(x, y, z);
+
         //set block
         const success = chunk.setBlock(lx, ly, lz, block);
 
-        if (success) this.onBlockChanged({ chunkPos: [cx, cy, cz], blockPos: [x, y, z], block });
+        if (success) this.onBlockChanged({ chunkPos: [cx, cy, cz], blockPos: [x, y, z], block, previousBlock });
 
         return success;
     };
@@ -140,6 +143,10 @@ export default class World {
 
         return true;
     }
+
+    emitParticleEvent(event) { this.particleEvents.push(event); }
+
+    drainParticleEvents() { return this.particleEvents.splice(0); }
 
 
     placeBlock(hit, player) {
