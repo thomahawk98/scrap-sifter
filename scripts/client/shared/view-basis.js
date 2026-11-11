@@ -21,6 +21,7 @@ export function rotateLocal(orientation, axis, angle) {
     return result.map(component => component / length);
 }
 
+// Rotate one direction vector by a unit quaternion without allocating matrices.
 function rotateVector(orientation, vector) {
     const [w, x, y, z] = orientation;
     const [vx, vy, vz] = vector;
@@ -34,6 +35,7 @@ function rotateVector(orientation, vector) {
     ];
 }
 
+// Derive the forward, right, and up basis vectors for a camera orientation.
 export function getViewBasis(orientation) {
     return {
         forward: rotateVector(orientation, [0, 0, -1]),
@@ -42,7 +44,7 @@ export function getViewBasis(orientation) {
     };
 }
 
+// Turn the rear camera around local up while preserving the player's roll.
 export function reverseView(orientation) {
-    // Turn the rear camera around local up while preserving the player's roll.
     return rotateLocal(orientation, [0, 1, 0], Math.PI);
 }

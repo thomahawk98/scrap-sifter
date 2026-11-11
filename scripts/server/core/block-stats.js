@@ -1,3 +1,4 @@
+// Choose the base color for a block face, including directional terrain colors.
 export function getBlockFaceColor(type, normal = [0, 1, 0]) {
     // Normal directions: [x, y, z]
     const isTop = normal[1] == 1;
@@ -71,7 +72,7 @@ export function getBlockFaceColor(type, normal = [0, 1, 0]) {
 
         case 'magma':
             return [1, 0.5, 0];
-            
+
         case "gold":
             return [1.0, 0.84, 0];
         case "diamonds":
@@ -100,6 +101,7 @@ export function getBlockFaceColor(type, normal = [0, 1, 0]) {
     }
 }
 
+// Map terrain surface blocks to the item they drop when broken.
 export function getBlockDropType(type) {
     switch (type) {
         case 'grass':
@@ -123,6 +125,7 @@ const BLOCK_HEALTH_BY_TYPE = {
 
 const DEFAULT_BLOCK_HEALTH = 30;
 
+// Return the blast threshold used when explosions evaluate a block type.
 export function getBlockHealth(type) {
     return BLOCK_HEALTH_BY_TYPE[type] ?? DEFAULT_BLOCK_HEALTH;
 }

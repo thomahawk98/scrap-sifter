@@ -7,6 +7,7 @@ const TARGET_GEOMETRY = createCubeGeometry();
 
 // A simple shooting target that appears on the generated terrain surface.
 export default class Target extends Entity {
+    // Create a small durable target on the generated terrain.
     constructor(pos) {
         super({
             pos,
@@ -20,6 +21,7 @@ export default class Target extends Entity {
         this.removeAfterHit = false;
     }
 
+    // Select a sampled air cell, preferring spots with a solid floor.
     static createForChunk(chunk) {
         let surfaceSpot = null;
         let surfaceSpotCount = 0;
@@ -54,10 +56,12 @@ export default class Target extends Entity {
         return new Target(pos);
     }
 
+    // Mark the target for removal on the next entity update after a hit.
     die() {
         this.removeAfterHit = true;
     }
 
+    // Defer removal until the manager's stable update snapshot finishes.
     update(deltaScale = 1, { world } = {}) {
         if (this.removeAfterHit) {
             world?.entities.remove(this);

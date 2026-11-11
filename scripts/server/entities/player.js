@@ -9,15 +9,12 @@ import { createCubeGeometry } from '../core/entity-geometry.js';
 const PLAYER_GEOMETRY = createCubeGeometry();
 
 export default class Player extends Entity {
+    // Compose player controls, inventory, camera state, and a safe world spawn.
     constructor(world) {
         super({ geometry: PLAYER_GEOMETRY, scale: [0.8, 0.8, 0.8], material: { color: [1, 0, 0] } });
         this.type = 'player';
 
         this.spawnPos = [0, 0, 0];
-
-        this.head = {
-            pos: this.spawnPos,
-        };
 
         this.shootReload = 0;
         this.interactReload = 0;
@@ -40,6 +37,7 @@ export default class Player extends Entity {
         this.respawn(world);
     }
 
+    // Run the authoritative player step using a named-action input snapshot.
     update(deltaScale = 1, { inputs, world, updateInventory } = {}) {
         if (!inputs || !world) return;
         this.inputs = inputs;
@@ -48,7 +46,6 @@ export default class Player extends Entity {
         if (!this.menuOpen) this.updateAcceleration(deltaScale);
         super.update(deltaScale, { world });
 
-        this.updateBody();
         this.interact(world, deltaScale);
 
         // User supplies the client view update at the same point in the player
@@ -67,6 +64,7 @@ export default class Player extends Entity {
 
     };
 
+    // Restore health and move to a clear spawn when terrain is available.
     respawn(world = null) {
         this.velocity = [0, 0, 0];
         this.health = this.maxHealth;
@@ -80,7 +78,6 @@ export default class Player extends Entity {
             this.pos = [...this.spawnPos];
             this.needsSafeSpawn = true;
         }
-        this.head.pos = [...this.pos];
     };
 
     // Players return to their spawn immediately for now; a death screen can be
@@ -89,6 +86,7 @@ export default class Player extends Entity {
         this.respawn(world);
     }
 
+    // Retry a deferred spawn search without allowing movement into unloaded chunks.
     ensureSafeSpawn(world) {
         if (!this.needsSafeSpawn) return true;
         if (this.spawnSearchCooldown > 0) {
@@ -102,11 +100,11 @@ export default class Player extends Entity {
         }
         this.pos = safePosition;
         this.spawnPos = [...safePosition];
-        this.head.pos = [...safePosition];
         this.needsSafeSpawn = false;
         return true;
     }
 
+    // Search nearby columns and heights for a loaded, collision-free position.
     findSafeSpawn(world, preferredPosition) {
         if (!world || !preferredPosition) return null;
         const [preferredChunkX, preferredChunkY, preferredChunkZ] = world.getChunkCoords(...preferredPosition);
@@ -142,6 +140,7 @@ export default class Player extends Entity {
         return null;
     }
 
+    // Confirm every voxel intersecting the player hitbox is loaded and air.
     isPositionClear(world, position) {
         const halfSize = [this.size.x, this.size.y, this.size.z].map(value => value * 0.5);
         const min = position.map((value, axis) => Math.floor(value - halfSize[axis] + 1e-6));
@@ -158,11 +157,7 @@ export default class Player extends Entity {
         return true;
     }
 
-    updateBody() {
-        // Player position is the center of the cube and the camera origin.
-        this.head.pos = [...this.pos];
-    };
-
+    // Apply mouse deltas as local-axis quaternion rotations.
     rotateView(mouseX, mouseY, roll = false) {
         const sensitivity = 0.002;
         const horizontalAxis = roll ? [0, 0, -1] : [0, 1, 0];
@@ -171,6 +166,7 @@ export default class Player extends Entity {
         this.orientation = rotateLocal(this.orientation, [1, 0, 0], -mouseY * sensitivity);
     }
 
+    // Handle item use, ray targeting, and cooldown-limited block placement.
     interact(world, deltaScale = 1) {
         if (this.shootReload > 0) this.shootReload = Math.max(0, this.shootReload - deltaScale);
         if (this.interactReload > 0) this.interactReload = Math.max(0, this.interactReload - deltaScale);
@@ -184,7 +180,7 @@ export default class Player extends Entity {
 
         // get the block the player is looking at
         const { forward } = getViewBasis(this.orientation);
-        const hit = raycast(this.head.pos, forward, world, this.reach);
+        const hit = raycast(this.pos, forward, world, this.reach);
         if (!hit) {
             this.outlinedBlock = null;
             return false
@@ -201,29 +197,34 @@ export default class Player extends Entity {
         }
     };
 
+    // Spawn a server-owned bullet in the current view direction.
     shootBullet(world) {
         const { forward } = getViewBasis(this.orientation);
         world.audio?.playWorld('blaster-shot', this.pos, { volume: 0.8 });
         world.entities.add(new Bullet([...this.pos], forward, this));
     }
 
+    // Spawn a server-owned bomb in the current view direction.
     shootBomb(world) {
         const { forward } = getViewBasis(this.orientation);
         world.audio?.playWorld('bomb-launch.mp3', this.pos, { volume: 0.8 });
         world.entities.add(new Bomb([...this.pos], forward, this));
     }
 
+    // Read a named mouse action while retaining the legacy input shape fallback.
     isMouseDown(action) {
         if (this.inputs.isMouseDown) return this.inputs.isMouseDown(action);
         const button = action === 'shoot' ? 0 : 2;
         return this.inputs.mouse.buttons[button];
     }
 
+    // Close both the pause menu and the server inventory panel state.
     closeMenu() {
         this.menuOpen = false;
         if (this.inventory.open) this.inventory.open = false;
     }
 
+    // Convert named movement actions into normalized camera-relative acceleration.
     updateAcceleration(deltaScale = 1) {
         const keys = this.inputs.keys;
         const isDown = (action, fallback) => this.inputs.isDown

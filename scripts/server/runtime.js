@@ -20,16 +20,19 @@ export default class ServerRuntime {
         this.playerInputs = new Map();
     }
 
+    // Route player creation through the player registry and all other entities through the manager.
     addEntity(entity) {
         if (entity.type === 'player') return this.addPlayer(entity);
         return this.world.entities.add(entity);
     }
 
+    // Add a supplied player or create the default local simulation player.
     addPlayer(player) {
         player ??= new Player(this.world);
         return this.world.addPlayer(player);
     }
 
+    // Populate generated regions with a bounded number of nearby targets.
     spawnTargetForChunk(chunk) {
         const activeTargets = this.pruneDistantTargets();
         if (activeTargets >= MAX_ACTIVE_TARGETS) return;
@@ -46,6 +49,7 @@ export default class ServerRuntime {
         }
     }
 
+    // Remove targets far from every player so exploration can keep spawning new ones.
     pruneDistantTargets() {
         const players = [...this.world.getPlayers()];
         const activeTargets = [];
@@ -69,36 +73,44 @@ export default class ServerRuntime {
         return activeTargets.length;
     }
 
+    // Clear pending input before removing a player from world state.
     removePlayer(playerOrId) {
         const id = typeof playerOrId === 'object' ? playerOrId.id : playerOrId;
         this.playerInputs.delete(id);
         return this.world.removePlayer(playerOrId);
     }
 
+    // Expose entity lookup without leaking entity storage details to the transport.
     findEntity(predicate) {
         return this.world.entities.findFirst(predicate);
     }
 
+    // Return a requested player or the first connected player when no ID is given.
     getPlayer(playerId = null) {
         if (playerId !== null) return this.world.players.get(playerId) ?? null;
         return this.world.getPlayers().next().value ?? null;
     }
 
+    // Provide the live player iterator used by network and chunk coordination.
     getPlayers() {
         return this.world.getPlayers();
     }
 
+    // Store the latest validated input snapshot for the next simulation step.
     setPlayerInput(playerId, input) {
         if (!this.world.players.has(playerId)) throw new Error(`Unknown player entity: ${playerId}`);
         this.playerInputs.set(playerId, input);
     }
 
+    // Drop queued input when its source disconnects.
     removePlayerInput(playerId) { this.playerInputs.delete(playerId); }
 
+    // Advance world clocks and other world-level timers.
     updateWorld(deltaSeconds) {
         this.world.update(deltaSeconds);
     }
 
+    // Tick entities with server input and defer movement until spawn terrain exists.
     updateEntities(deltaScale) {
         this.world.entities.update(deltaScale, { world: this.world }, (entity, scale, context) => {
             if (this.world.players.has(entity.id)) {
@@ -117,11 +129,13 @@ export default class ServerRuntime {
         this.world.updatePlayerTrackers();
     }
 
+    // Refresh chunk-generation priorities from current player positions.
     updateChunks() {
         this.chunkManager.setPlayerPositions([...this.world.getPlayers()].map(player => player.pos));
         this.chunkManager.update();
     }
 
+    // Keep the simulation's shared render distance inside its supported range.
     clampRenderDistance() {
         this.world.renderDistance = Math.clamp(this.world.renderDistance, 2, 12);
     }

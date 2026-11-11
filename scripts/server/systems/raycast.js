@@ -1,4 +1,4 @@
-//raycast 3D dda
+// Traverse voxel cells with 3D DDA and return the first solid block face hit.
 export function raycast(pos, dir, world, maxDistance = 10) {
 
     let x = Math.floor(pos[0]);

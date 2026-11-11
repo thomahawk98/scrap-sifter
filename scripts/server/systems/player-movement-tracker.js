@@ -1,4 +1,5 @@
 export default class PlayerMovementTracker {
+    // Track one player's chunk coordinate changes for chunk-window updates.
     constructor(player, world) {
         this.player = player;
         this.world = world;
@@ -7,6 +8,7 @@ export default class PlayerMovementTracker {
         this.playerCrossedChunkBorder = false;
     }
 
+    // Latch a crossing until the chunk manager consumes it.
     update() {
         const chunkPos = this.world.getChunkCoords(...this.player.pos);
         if (chunkPos.some((coordinate, axis) => coordinate !== this.prevChunkPos[axis])) {
@@ -15,6 +17,7 @@ export default class PlayerMovementTracker {
         }
     }
 
+    // Read and clear the crossing latch in one operation.
     consumeChunkBorderCrossing() {
         const crossed = this.playerCrossedChunkBorder;
         this.playerCrossedChunkBorder = false;

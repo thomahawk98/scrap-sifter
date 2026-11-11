@@ -1,3 +1,4 @@
+// Define face normals, corners, and ambient-occlusion sample positions for meshing.
 export function getFaceDirs() {
     const faces = [
         {
@@ -68,4 +69,4 @@ export function getFaceDirs() {
         }
     ];
     return faces;
-}
+}

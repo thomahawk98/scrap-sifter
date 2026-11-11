@@ -20,6 +20,7 @@ const FACES = getFaceDirs().map(face => ({
 
 // Client CPU mesher: it consumes server voxel IDs and creates only local geometry.
 export default class ChunkMesher {
+    // Cull hidden faces, calculate ambient occlusion, and allocate exact mesh buffers.
     buildMesh(chunk, world, borderOccupancy = null) {
         const blocks = chunk.blocks;
         const occupancy = borderOccupancy ?? new Uint8Array(PADDED_VOLUME);

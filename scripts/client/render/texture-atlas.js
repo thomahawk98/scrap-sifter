@@ -1,6 +1,6 @@
 import { getBlockTypeCount, getBlockTypeIndex } from '../shared/block-registry.js';
 
-const ASSET_ROOT = '/scripts/client/assets/textures/';
+const ASSET_ROOT = '/assets/textures/';
 const TILE_SIZE = 32;
 const ATLAS_COLUMNS = 16;
 const MAX_ENTITY_TEXTURES = 64;
@@ -11,6 +11,7 @@ const FACE_CELLS = [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]];
 
 // One shared texture keeps all block and entity draws on the same WebGL binding.
 export default class TextureAtlas {
+    // Reserve stable tile ranges and create the shared WebGL texture surface.
     constructor(gl, assetLoader = null) {
         this.gl = gl;
         this.assetLoader = assetLoader;
@@ -39,11 +40,13 @@ export default class TextureAtlas {
         for (const type of ENTITY_TYPES) this.getEntityTextureBase(type);
     }
 
+    // Resolve the first atlas tile for a registered block type.
     getBlockTextureBase(type) {
         const index = getBlockTypeIndex(type);
         return index < 0 ? -1 : index * 6;
     }
 
+    // Allocate an entity texture slot on first use while retaining stable indices.
     getEntityTextureBase(type) {
         let slot = this.entitySlots.get(type);
         if (slot === undefined) {
@@ -55,6 +58,7 @@ export default class TextureAtlas {
         return (this.blockSlotCount + slot) * 6;
     }
 
+    // Request a block sheet once so chunk shaders can sample its atlas tiles.
     ensureBlockTexture(type) {
         const base = this.getBlockTextureBase(type);
         if (base < 0 || this.loadedAssets.has(`block:${type}`)) return;
@@ -62,17 +66,20 @@ export default class TextureAtlas {
         this.loadObjectTexture(`${type}-block`, base);
     }
 
+    // Bind the atlas for subsequent world or entity draws.
     bind() {
         const gl = this.gl;
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
     }
 
+    // Change the sampling mode for both magnification and minification.
     setSmoothingEnabled(enabled) {
         this.smoothingEnabled = Boolean(enabled);
         this.applyFiltering();
     }
 
+    // Share the same pending image promise across atlas and inventory consumers.
     getObjectImage(assetName) {
         if (!this.imagePromises.has(assetName)) {
             this.imagePromises.set(assetName, this.fetchImage(assetName));
@@ -80,6 +87,7 @@ export default class TextureAtlas {
         return this.imagePromises.get(assetName);
     }
 
+    // Slice a 3-by-2 face sheet into its six registered atlas tiles.
     async loadObjectTexture(assetName, firstTile) {
         const image = await this.getObjectImage(assetName);
         if (!image) return;
@@ -106,6 +114,7 @@ export default class TextureAtlas {
         this.upload();
     }
 
+    // Prefer preloaded media and fall back to one direct optional asset request.
     async fetchImage(assetName) {
         if (this.assetLoader) return this.assetLoader.getImage(`${assetName}.png`);
         try {
@@ -119,6 +128,7 @@ export default class TextureAtlas {
         }
     }
 
+    // Convert a linear atlas tile index to its canvas pixel origin.
     getTileOrigin(tile) {
         return [
             (tile % this.atlasColumns) * TILE_SIZE,
@@ -126,6 +136,7 @@ export default class TextureAtlas {
         ];
     }
 
+    // Upload the atlas canvas and apply its current filtering and edge rules.
     upload() {
         const gl = this.gl;
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
@@ -138,6 +149,7 @@ export default class TextureAtlas {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     }
 
+    // Keep texture filtering synchronized with the public smoothing preference.
     applyFiltering() {
         const gl = this.gl;
         const filter = this.smoothingEnabled ? gl.LINEAR : gl.NEAREST;

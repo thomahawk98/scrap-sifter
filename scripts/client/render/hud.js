@@ -1,5 +1,6 @@
 import { ChunkMap } from '../ui/maps.js';
 export default class Hud {
+    // Bind the HUD canvas and the map renderer to the camera orientation helper.
     constructor(canvas, { getViewBasis }) {
         this.canvas = canvas;
         this.ctx = canvas.getContext("2d");
@@ -8,6 +9,7 @@ export default class Hud {
         this.getViewBasis = getViewBasis;
     }
 
+    // Compose the inventory, pause state, diagnostics, health bar, and maps each frame.
     draw(paused, debugTexts, player, inputs, inventoryView) {
         const ctx = this.ctx;
         const canvas = this.canvas;
@@ -39,6 +41,7 @@ export default class Hud {
         this.drawMaps(ctx, player);
     }
 
+    // Draw current health and its threshold-colored fill in the upper corner.
     drawHealthBar(ctx, player) {
         const width = Math.min(220, Math.max(0, this.canvas.width - 32));
         const height = 16;
@@ -71,6 +74,7 @@ export default class Hud {
         ctx.restore();
     }
 
+    // Draw the centered aim marker while the game has focus.
     drawCrosshair(ctx, cx, cy) {
         const size = 10;
         ctx.save();
@@ -94,6 +98,7 @@ export default class Hud {
         ctx.restore();
     }
 
+    // Place each diagnostic string at a fixed vertical interval.
     drawDebugTexts(ctx, debugTexts) {
         //debug info
         ctx.textBaseline = 'top';
@@ -106,6 +111,7 @@ export default class Hud {
         }
     }
 
+    // Draw map canvases and rotate the direction marker with the player's view.
     drawMaps(ctx, player) {
         //display maps
         for (let i = 0; i < this.maps.length; i++) {

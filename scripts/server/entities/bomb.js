@@ -7,6 +7,7 @@ const BOMB_SCALE = [0.35, 0.35, 0.35];
 
 // Server-authoritative projectile that detonates on its first block or entity hit.
 export default class Bomb extends Entity {
+    // Initialize the projectile's movement, blast, and collision thresholds.
     constructor(pos, direction, owner = null) {
         super({
             pos,
@@ -26,6 +27,7 @@ export default class Bomb extends Entity {
         this.velocity = direction.map(axis => axis / length * this.BOMB_SPEED);
     }
 
+    // Detonate on the first solid block or overlapping non-owner entity.
     update(deltaScale = 1, { world } = {}) {
         if (!world || this.exploded) return;
         super.update(deltaScale, { world });
@@ -46,6 +48,7 @@ export default class Bomb extends Entity {
         }
     }
 
+    // Apply block damage, radial knockback, and entity damage exactly once.
     explode(world) {
         if (this.exploded) return;
         this.exploded = true;
@@ -105,6 +108,7 @@ function getBlastPower(lx, ly, lz, radius) {
     return distance >= radius ? 0 : 1 - distance / radius;
 }
 
+// Use strict overlap on all three axes for projectile/entity contacts.
 function overlaps(first, second) {
     return Math.abs(first.pos[0] - second.pos[0]) < (first.size.x + second.size.x) * 0.5 &&
         Math.abs(first.pos[1] - second.pos[1]) < (first.size.y + second.size.y) * 0.5 &&

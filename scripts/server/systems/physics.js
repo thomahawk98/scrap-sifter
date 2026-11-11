@@ -1,4 +1,5 @@
 const Physics = {
+    // Resolve movement on each axis, then apply fluid damping and one impact event.
     moveEntity(entity, world, deltaScale = 1) {
         entity.collidedBlock = null;
         let impactSpeed = 0;
@@ -23,6 +24,7 @@ const Physics = {
             entity.takeDamage(damage, entity.collidedBlock, world);
         }
     },
+    // Move along one axis and stop at the nearest solid block face.
     tryToMove(entity, axis, world, deltaScale = 1) {
         const speed = entity.velocity[axis] * deltaScale;
         if (speed == 0) return;
@@ -47,6 +49,7 @@ const Physics = {
 
         return collided ? { block: collided, speed } : null;
     },
+    // Find the first solid voxel crossed by an axis-aligned entity movement.
     getBlockingBlock(world, entity, axis, speed) {
         const half = [entity.size.x, entity.size.y, entity.size.z].map(value => value * 0.5);
         const axisStart = entity.pos[axis] + (speed > 0 ? half[axis] : -half[axis]);
@@ -90,6 +93,7 @@ const Physics = {
         }
         return closestBlock;
     },
+    // Return the first intersecting voxel, or all intersecting voxels when requested.
     anyBlockCollidesWithEntity(world, entityShell, all = false) {
         // all means we need to get all the blocks that collide with the entity, if not, we just need to know if one does
 
@@ -117,6 +121,7 @@ const Physics = {
 
         return all ? hits : false;
     },
+    // Test an axis-aligned block against an entity list, optionally collecting every hit.
     anyEntityCollidesWithBlock(blockShell, entities, all = false) {
         const hits = all ? [] : false;
 
@@ -158,12 +163,14 @@ const Physics = {
 
         return hits;
     },
+    // Use medium-specific velocity damping for airborne and fluid movement.
     getFluidFriction(entity) {
         if (!entity.inFluid) return 0.01; // air resistance
         switch (entity.inFluid.type) {
             case 'water': return 0.05;
         }
     },
+    // Use medium-specific acceleration scaling for player controls.
     getFluidTraction(entity) {
         if (!entity.inFluid) return 0.1; // allow a tiny bit of movement in the air
         switch (entity.inFluid.type) {

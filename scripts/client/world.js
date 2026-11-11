@@ -3,6 +3,7 @@ import Chunk from './shared/chunk-data.js';
 // Client replica contains only the data needed for view, collision queries,
 // maps, and meshing. The server remains authoritative for world mutations.
 export default class ClientWorld {
+    // Allocate client-owned world replicas and default visibility settings.
     constructor() {
         this.seed = 0;
         this.daylight = 1;
@@ -12,22 +13,26 @@ export default class ClientWorld {
         this.entities = new Map();
     }
 
+    // Build the same coordinate key used by chunk storage and socket payloads.
     getChunkKey(cx, cy, cz) { return `${cx},${cy},${cz}`; }
+    // Convert global coordinates to their containing chunk coordinates.
     getChunkCoords(x, y, z) { return [x, y, z].map(value => Math.floor(value / this.CHUNK_SIZE)); }
+    // Return an already resident client chunk by coordinate.
     getChunk(cx, cy, cz) { return this.chunks.get(this.getChunkKey(cx, cy, cz)) ?? null; }
+    // Create the local player replica with client-side controls and inventory view state.
     createLocalPlayer() {
         const player = createEntityReplica({
             id: -1, type: 'player', pos: [0, 0, 0], orientation: [1, 0, 0, 0],
             scale: [0.6, 0.6, 0.6], velocity: [0, 0, 0], material: { color: [1, 0, 0] },
             perspectiveMode: 0, health: 100, maxHealth: 100,
         });
-        player.head = { pos: player.pos };
         player.inventory = createInventory();
         player.menuOpen = false;
         player.inputs = { keys: {}, mouse: { buttons: [], inBox: () => false } };
         this.entities.set(player.id, player);
         return player;
     }
+    // Resolve any block coordinate from the local chunk cache, defaulting unknown data to air.
     getBlock(x, y, z) {
         const [cx, cy, cz] = this.getChunkCoords(x, y, z);
         const chunk = this.getChunk(cx, cy, cz);
@@ -35,9 +40,11 @@ export default class ClientWorld {
         const block = chunk.getBlock(modulo(x, 16), modulo(y, 16), modulo(z, 16));
         return block ? { pos: [x, y, z], ...block } : { pos: [x, y, z], type: 'air' };
     }
+    // Expose the known solidity state for collision, meshing, and audio queries.
     isSolidBlock(x, y, z) {
         return this.getVoxelState(x, y, z) === true;
     }
+    // Return true/false for known voxels and null when their chunk is not loaded.
     getVoxelState(x, y, z) {
         const [cx, cy, cz] = this.getChunkCoords(x, y, z);
         const chunk = this.getChunk(cx, cy, cz);
@@ -45,6 +52,7 @@ export default class ClientWorld {
         const index = chunk.getIndex(modulo(x, 16), modulo(y, 16), modulo(z, 16));
         return chunk.blocks[index] !== 0;
     }
+    // Apply a server block update and invalidate nearby meshes at chunk boundaries.
     setBlock(x, y, z, block) {
         const [cx, cy, cz] = this.getChunkCoords(x, y, z);
         const chunk = this.getChunk(cx, cy, cz);
@@ -59,6 +67,7 @@ export default class ClientWorld {
         return changed;
     }
 
+    // Install server voxel data and invalidate meshes that share its borders.
     receiveChunk(data) {
         const [cx, cy, cz] = data.chunkPos;
         const chunk = this.getChunk(cx, cy, cz) ?? new Chunk(cx, cy, cz);
@@ -71,6 +80,7 @@ export default class ClientWorld {
         }
     }
 
+    // Merge a network entity snapshot while preserving local-only player controls.
     upsertEntity(data, localEntityId = null) {
         let entity = this.entities.get(data.id);
 
@@ -104,8 +114,6 @@ export default class ClientWorld {
             entity.inventory = Object.assign(createInventory(), entity.inventory ?? {}, inventoryData);
             entity.inventory.open = localInventoryOpen ?? inventoryData.open ?? false;
             entity.inventory.selectedSlot = localSelectedSlot ?? inventoryData.selectedSlot ?? 0;
-            entity.head = entity.head ?? { pos: entity.pos };
-            entity.head.pos = entity.pos;
             entity.inputs = entity.inputs ?? { keys: {}, mouse: { buttons: [], inBox: () => false } };
             entity.geometry = entity.geometry ?? createCubeGeometry();
             return entity;
@@ -115,9 +123,11 @@ export default class ClientWorld {
         return entity;
     }
 
+    // Remove a replica that left the world or is outside the latest visibility set.
     removeEntity(id) { this.entities.delete(id); }
 }
 
+// Create the client-side inventory shape required by the HUD and local controls.
 function createInventory() {
     return {
         items: [], cursorItem: null, selectedSlot: 0, WIDTH: 8, HEIGHT: 4, open: false,
@@ -133,6 +143,7 @@ function createInventory() {
 
 const CUBE_GEOMETRY = createCubeGeometry();
 
+// Attach presentation helpers and defaults to a plain server entity snapshot.
 function createEntityReplica(data) {
     return {
         ...data, pos: [...data.pos], targetPos: [...data.pos],
@@ -153,8 +164,10 @@ function createEntityReplica(data) {
     };
 }
 
+// Keep negative world coordinates mapped into local chunk coordinates.
 const modulo = (value, divisor) => ((value % divisor) + divisor) % divisor;
 
+// Rotate a client-owned quaternion around a local camera axis.
 function rotateLocal(q, axis, angle) {
     const length = Math.hypot(...axis) || 1;
     const [x, y, z] = axis.map(value => value / length);
@@ -166,6 +179,7 @@ function rotateLocal(q, axis, angle) {
     return out.map(value => value / norm);
 }
 
+// Build one shared cube mesh for client-side entity replicas.
 function createCubeGeometry() {
     const vertices = [];
     const faces = [

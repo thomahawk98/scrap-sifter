@@ -2,12 +2,14 @@
 import terrain from '../core/terrain.js';
 import { parentPort } from 'node:worker_threads';
 
+// Generate requested chunks and transfer their voxel buffers without copying.
 parentPort.on('message', ({ chunkPositions, seed }) => {
     const chunks = chunkPositions.map(chunkPos => generateChunkVoxels(chunkPos, seed));
     const transferables = chunks.map(chunk => chunk.voxels.buffer);
     parentPort.postMessage({ chunks }, transferables);
 });
 
+// Generate compact voxel IDs for one chunk using the shared seeded terrain field.
 function generateChunkVoxels(chunkPos, seed) {
     const CHUNK_SIZE = 16;
     const baseX = chunkPos[0] * CHUNK_SIZE;

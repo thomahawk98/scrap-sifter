@@ -1,14 +1,13 @@
-import User from './client/user.js';
-import Renderer from './client/render/renderer.js';
+import User from './user.js';
+import Renderer from './render/renderer.js';
 
-// Browser composition contains presentation and transport only. ServerRuntime
-// runs in the Node process and is never instantiated in the client.
+// this is the client side game replica, actual updates happen server side
 export default class Game {
     constructor({ assetLoader = null, keyBindings = {}, mouseBindings = {} } = {}) {
         this.glCanvas = document.getElementById('glcanvas');
         this.hudCanvas = document.getElementById('hudcanvas');
 
-        // Watch viewport and element-size changes so docked tools resize the game.
+        // watch viewport and element-size changes so docked tools resize the game
         this.handleResize = () => this.resizeCanvases();
         window.addEventListener('resize', this.handleResize);
         window.visualViewport?.addEventListener('resize', this.handleResize);
@@ -19,7 +18,7 @@ export default class Game {
         }
         this.resizeCanvases();
 
-        // Compose the browser-side transport and presentation components.
+        // compose the browser-side transport and presentation components
         this.socket = window.io();
         this.renderer = new Renderer(this.glCanvas, assetLoader);
         this.renderer.resize();
@@ -29,9 +28,9 @@ export default class Game {
             assetLoader,
             keyBindings, mouseBindings,
         });
-        this.users = [this.user];
     }
 
+    // resize both drawing surfaces and refresh the WebGL viewport when needed
     resizeCanvases() {
         let resized = false;
         for (const canvas of [this.glCanvas, this.hudCanvas]) {
@@ -39,7 +38,7 @@ export default class Game {
             const width = Math.max(1, Math.round(bounds.width));
             const height = Math.max(1, Math.round(bounds.height));
 
-            // Attribute changes clear canvases, so update only when CSS size changed.
+            // attribute changes clear canvases, so update only when CSS size changed
             if (canvas.width !== width || canvas.height !== height) {
                 canvas.width = width;
                 canvas.height = height;
@@ -47,7 +46,7 @@ export default class Game {
             }
         }
 
-        // WebGL retains its previous viewport until it is explicitly updated.
+        // WebGL retains its previous viewport until it is explicitly updated
         if (resized) this.renderer?.resize();
     }
 }

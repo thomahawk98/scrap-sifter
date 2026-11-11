@@ -4,6 +4,7 @@ import ChunkGenerator from './chunk-generator.js';
 // Server chunk storage and generation. Clients subscribe to coordinates; only
 // completed block data crosses the socket, while meshing remains client-side.
 export default class ChunkManager {
+    // Bind chunk storage, generation, and network notification callbacks.
     constructor(world, onChunkReady = () => {}, onChunkGenerated = () => {}) {
         this.world = world;
         this.chunks = world.chunks;
@@ -13,8 +14,10 @@ export default class ChunkManager {
         this.requestedBy = new Map();
     }
 
+    // Return a ready or pending chunk by integer world coordinates.
     getChunk(cx, cy, cz) { return this.chunks.get(this.world.getChunkKey(cx, cy, cz)) ?? null; }
 
+    // Reuse existing chunk metadata or create an empty generation record.
     createChunk(cx, cy, cz) {
         const key = this.world.getChunkKey(cx, cy, cz);
         let chunk = this.chunks.get(key);
@@ -22,6 +25,7 @@ export default class ChunkManager {
         return chunk;
     }
 
+    // Subscribe a player and either send ready data or enqueue generation.
     request(playerId, cx, cy, cz) {
         const key = this.world.getChunkKey(cx, cy, cz);
         let subscribers = this.requestedBy.get(key);
@@ -33,6 +37,7 @@ export default class ChunkManager {
         else this.generator.requestNewChunk(cx, cy, cz);
     }
 
+    // Remove one player's interest in a chunk key.
     release(playerId, key) {
         const subscribers = this.requestedBy.get(key);
         if (!subscribers) return;
@@ -40,6 +45,7 @@ export default class ChunkManager {
         if (subscribers.size === 0) this.requestedBy.delete(key);
     }
 
+    // Remove every subscription for a disconnecting player and prune queued work.
     releaseAll(playerId) {
         for (const [key, subscribers] of this.requestedBy) {
             subscribers.delete(playerId);
@@ -48,10 +54,13 @@ export default class ChunkManager {
         this.generator.pruneUnsubscribed();
     }
 
+    // Keep generation prioritization aligned with current player positions.
     setPlayerPositions(positions) { this.generator.setPlayerPositions(positions); }
 
+    // Dispatch pending work to any available generation worker.
     update() { this.generator.processNextRequests(); }
 
+    // Commit worker data only if the chunk still matches its queued revision.
     receiveGeneratedChunk(data, request) {
         const chunk = this.chunks.get(request.key);
         if (chunk !== request.chunk || chunk.revision !== request.revision) return;
@@ -62,10 +71,12 @@ export default class ChunkManager {
         }
     }
 
+    // Make a failed in-flight request eligible for another generation attempt.
     failGenerationRequest(request) {
         if (request.chunk.dataStatus === 'generating') request.chunk.dataStatus = 'missing';
     }
 
+    // Send the compact voxel payload required by a client replica.
     serialize(chunk) {
         return { chunkPos: [chunk.cx, chunk.cy, chunk.cz], voxels: chunk.blocks, empty: chunk.empty };
     }

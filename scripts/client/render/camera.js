@@ -1,7 +1,8 @@
 export default class Camera {
+    // Keep projection settings and the player's current camera transform together.
     constructor(player, fov = 90, near = 0.1, far = 100, { getViewBasis, reverseView } = {}) {
         this.player = player;
-        this.pos = [...player.head.pos];
+        this.pos = [...player.pos];
         this.orientation = [...player.orientation];
 
         this.fov = fov;
@@ -14,9 +15,10 @@ export default class Camera {
 
     }
 
+    // Position and orient the camera for the selected first- or third-person mode.
     update() {
-        //player head position
-        const pos = this.player.head.pos;
+        // The player position is also the camera origin in first-person mode.
+        const pos = this.player.pos;
         const orientation = this.player.orientation;
         const mode = this.player.perspectiveMode;
 
@@ -45,6 +47,7 @@ export default class Camera {
         this.orientation = mode === 2 ? this.reverseView(orientation) : [...orientation];
     }
 
+    // Build a view matrix from the camera basis or an explicit eye/target pair.
     getView(eyePos = this.pos, target = null, up = [0, 1, 0]) {
         let x, y, z;
         if (target === null) {
@@ -66,6 +69,7 @@ export default class Camera {
         ]);
     }
 
+    // Build a perspective projection matrix from the current field of view.
     getProjection(aspect) {
         const fovRad = 1 / Math.tan(this.fov * 0.5 * (Math.PI / 180));
         const rangeInv = 1 / (this.near - this.far);

@@ -8,6 +8,7 @@ import { readdir } from 'node:fs/promises';
 import ServerRuntime from './runtime.js';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const clientRoot = path.join(projectRoot, 'scripts', 'client');
 const FIXED_STEP = 1 / 60;
 const SNAPSHOT_INTERVAL = 3;
 
@@ -23,7 +24,8 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
             response.status(500).json({ error: 'Could not load game assets.' });
         }
     });
-    app.use(express.static(projectRoot));
+    // Expose only the browser application and its assets from the web root.
+    app.use(express.static(clientRoot));
     const httpServer = createServer(app);
     const io = new Server(httpServer, { maxHttpBufferSize: 5e6 });
     const connectedPlayers = new Map();
@@ -41,6 +43,7 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
     });
     let tick = 0;
 
+    // Create a server-owned player and initialize its client session on connect.
     io.on('connection', socket => {
         const player = runtime.addPlayer();
         player.name = socket.id;
@@ -61,6 +64,7 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
         });
         socket.broadcast.emit('player:joined', serializeEntity(player));
 
+        // Accept only finite, complete action snapshots before changing simulation input.
         socket.on('player:input', input => {
             const controlledPlayer = runtime.getPlayer(player.id);
             if (!controlledPlayer || !validInput(input)) return;
@@ -77,11 +81,13 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
             runtime.setPlayerInput(player.id, createServerInput(input));
         });
 
+        // Inventory clicks are resolved against server-owned item stacks.
         socket.on('inventory:click', slot => {
             const controlledPlayer = runtime.getPlayer(player.id);
             controlledPlayer?.inventory.clickSlot(slot);
         });
 
+        // Serve bounded chunk requests only when they are near this player's position.
         socket.on('chunks:request', positions => {
             if (!Array.isArray(positions)) return;
             const playerNow = runtime.getPlayer(player.id);
@@ -97,6 +103,7 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
             }
         });
 
+        // Release validated chunk subscriptions as the client moves its view window.
         socket.on('chunks:release', keys => {
             if (!Array.isArray(keys)) return;
             for (const key of keys.slice(0, 1024)) {
@@ -104,10 +111,12 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
             }
         });
 
+        // Clamp client preference before it affects visibility and event ranges.
         socket.on('render-distance:set', distance => {
             if (Number.isInteger(distance)) player.renderDistance = Math.max(2, Math.min(12, distance));
         });
 
+        // Drop all player-owned subscriptions and state on disconnect.
         socket.on('disconnect', () => {
             connectedPlayers.delete(player.id);
             runtime.chunkManager.releaseAll(player.id);
@@ -116,6 +125,7 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
         });
     });
 
+    // Run fixed simulation steps, dispatch transient events, and send periodic snapshots.
     setInterval(() => {
         runtime.updateWorld(FIXED_STEP);
         runtime.updateEntities(1);
@@ -149,6 +159,7 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
         }
     }, FIXED_STEP * 1000);
 
+    // Bind the single-origin game server and print reachable LAN addresses.
     httpServer.listen(port, host, () => {
         console.log(`LAN server listening on port ${port}:`);
         for (const addresses of Object.values(networkInterfaces())) {
@@ -162,8 +173,9 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
     return { app, httpServer, io, runtime };
 }
 
+// Discover browser assets recursively so preload manifests follow the asset tree.
 async function buildAssetManifest() {
-    const assetsRoot = path.join(projectRoot, 'scripts', 'client', 'assets');
+    const assetsRoot = path.join(clientRoot, 'assets');
     const manifest = { images: [], audios: [], fonts: [] };
     const categories = [
         { key: 'images', extensions: new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']) },
@@ -171,6 +183,7 @@ async function buildAssetManifest() {
         { key: 'fonts', extensions: new Set(['.ttf', '.otf', '.woff', '.woff2']) },
     ];
 
+    // Walk nested asset folders and include only browser-loadable media types.
     async function visit(directory) {
         for (const entry of await readdir(directory, { withFileTypes: true })) {
             const fullPath = path.join(directory, entry.name);
@@ -183,7 +196,7 @@ async function buildAssetManifest() {
             const extension = path.extname(entry.name).toLowerCase();
             const category = categories.find(candidate => candidate.extensions.has(extension));
             if (!category) continue;
-            const relativePath = path.relative(projectRoot, fullPath);
+            const relativePath = path.relative(clientRoot, fullPath);
             const url = `/${relativePath.split(path.sep).map(encodeURIComponent).join('/')}`;
             manifest[category.key].push({ name: entry.name, url });
         }
@@ -194,6 +207,7 @@ async function buildAssetManifest() {
     return manifest;
 }
 
+// Route each sound according to its world, global, or player-only scope.
 function dispatchAudioEvents(events, runtime, connectedPlayers, io) {
     let deliveries = 0;
     for (const event of events) {
@@ -227,6 +241,7 @@ function dispatchAudioEvents(events, runtime, connectedPlayers, io) {
     return deliveries;
 }
 
+// Send transient particle effects only to players within their view range.
 function dispatchParticleEvents(events, runtime, connectedPlayers) {
     let deliveries = 0;
     for (const event of events) {
@@ -242,10 +257,12 @@ function dispatchParticleEvents(events, runtime, connectedPlayers) {
     return deliveries;
 }
 
+// Measure a 3D source-to-listener distance for event range filtering.
 function distanceBetween(first, second) {
     return Math.hypot(first[0] - second[0], first[1] - second[1], first[2] - second[2]);
 }
 
+// Copy only network-safe entity state, including plain inventory item data.
 function serializeEntity(entity) {
     return {
         id: entity.id, type: entity.type ?? 'entity', name: entity.name ?? null, pos: [...entity.pos],
@@ -253,7 +270,7 @@ function serializeEntity(entity) {
         health: entity.health, maxHealth: entity.maxHealth,
         material: entity.material, visible: entity.visible,
         outlinedBlock: entity.outlinedBlock,
-        perspectiveMode: entity.perspectiveMode, head: entity.head,
+        perspectiveMode: entity.perspectiveMode,
         inventory: entity.inventory ? {
             items: entity.inventory.items.map(item => item?.toJSON?.() ?? item),
             cursorItem: entity.inventory.cursorItem?.toJSON?.() ?? entity.inventory.cursorItem ?? null,
@@ -262,16 +279,19 @@ function serializeEntity(entity) {
     };
 }
 
+// Validate integer coordinates before a chunk key reaches server storage.
 function validChunkPosition(position) {
     return Array.isArray(position) && position.length === 3 && position.every(Number.isInteger);
 }
 
+// Reject incomplete or non-finite client input before it is used in simulation.
 function validInput(input) {
     return input && Array.isArray(input.orientation) && input.orientation.length === 4 &&
         input.orientation.every(Number.isFinite) && input.actions && typeof input.actions === 'object' &&
         Array.isArray(input.buttons);
 }
 
+// Adapt the wire snapshot to the named-action interface expected by Player.
 function createServerInput(input) {
     const actions = { ...input.actions };
     const buttons = [...input.buttons];

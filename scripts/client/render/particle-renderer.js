@@ -20,6 +20,7 @@ void main() {
 
 // Builds camera-facing world-space quads and submits them in one draw call.
 export default class ParticleRenderer {
+    // Compile the effect shader and allocate reusable dynamic vertex storage.
     constructor(gl) {
         this.gl = gl;
         this.program = this.createProgram(PARTICLE_VS, PARTICLE_FS);
@@ -37,6 +38,7 @@ export default class ParticleRenderer {
         };
     }
 
+    // Compile the billboard shaders and fail early if WebGL rejects either stage.
     createProgram(vertexSource, fragmentSource) {
         const gl = this.gl;
         const compile = (type, source) => {
@@ -62,6 +64,7 @@ export default class ParticleRenderer {
         return program;
     }
 
+    // Expand particles into camera-facing quads and submit one blended draw.
     render(particles, camera, view, projection) {
         if (!particles.length) return;
         const gl = this.gl;

@@ -8,41 +8,25 @@ import AudioProcessor from './audio/audio-processor.js';
 import ParticleSystem from './systems/particle-system.js';
 import { getViewBasis, reverseView } from './shared/view-basis.js';
 import { getBlockFaceColor } from './shared/block-stats.js';
+import { raycast } from './shared/raycast.js';
 
 const CHUNK_MAP_REFRESH_MILLISECONDS = 100;
 const INPUT_SEND_MILLISECONDS = 50;
 const ENTITY_POSITION_INTERPOLATION = 0.15;
 
-// A User owns one local view and its socket connection; authoritative gameplay
-// and shared world mutations are received from the server as snapshots/events.
 export default class User {
     constructor({ socket, renderer, glCanvas, hudCanvas, assetLoader = null, keyBindings = {}, mouseBindings = {} }) {
         this.socket = socket;
         this.renderer = renderer;
+
+        // client side world
         this.world = new ClientWorld();
+        this.chunkManager = new ClientChunkManager(this.world, socket, renderer);
+        this.particles = new ParticleSystem();
+
+        // player and inputs
         this.playerId = null;
         this.player = this.world.createLocalPlayer();
-        this.particles = new ParticleSystem();
-        this.inventoryView = new InventoryView(
-            this.player,
-            slot => socket.emit('inventory:click', slot),
-            renderer.textureAtlas,
-        );
-        this.camera = new Camera(this.player, 90, 0.1, 200, { getViewBasis, reverseView });
-        this.hud = new Hud(hudCanvas, { getViewBasis });
-        this.audio = new AudioProcessor({
-            world: this.world,
-            assetLoader,
-            getListener: () => ({
-                position: this.player.head?.pos ?? this.player.pos,
-                right: getViewBasis(this.player.orientation).right,
-            }),
-        });
-        this.chunkManager = new ClientChunkManager(this.world, socket, renderer);
-        this.lastChunkMapRefresh = 0;
-        this.lastInputSent = 0;
-        this.previousUpdateTime = null;
-        this.updateInventory = deltaScale => this.inventoryView.update(this.hud.canvas, deltaScale);
         this.input = new InputController({
             canvas: glCanvas, player: this.player, camera: this.camera, keyBindings, mouseBindings,
             onClearChunks: () => this.chunkManager.clear(),
@@ -57,13 +41,41 @@ export default class User {
             inspectChunks: () => console.log(this.world.chunks),
         });
         this.player.inputs = this.input;
+
+        // hud canvas
+        this.hud = new Hud(hudCanvas, { getViewBasis });
+        this.inventoryView = new InventoryView(
+            this.player,
+            slot => socket.emit('inventory:click', slot),
+            renderer.textureAtlas,
+        );
+
+        // camera
+        this.camera = new Camera(this.player, 90, 0.1, 200, { getViewBasis, reverseView });
+
+        // audio processor
+        this.audio = new AudioProcessor({
+            world: this.world,
+            assetLoader,
+            getListener: () => ({
+                position: this.player.pos,
+                right: getViewBasis(this.player.orientation).right,
+            }),
+        });
+
+        this.lastChunkMapRefresh = 0;
+        this.lastInputSent = 0;
+        this.previousUpdateTime = null;
+
+        this.updateInventory = deltaScale => this.inventoryView.update(this.hud.canvas, deltaScale);
         this.bindSocketEvents();
     }
 
     bindSocketEvents() {
-        // start of a new game session
+
+        // ready session replaces old local state before the new snapshots arrive.
         this.socket.on('session:ready', session => {
-            // clear the previous session data
+            // Clear previous requests and entity state before installing the new world.
             this.chunkManager.clear();
             this.world.entities.clear();
 
@@ -83,8 +95,14 @@ export default class User {
             // Keep the server's per-player request limit aligned with this view.
             this.socket.emit('render-distance:set', this.world.renderDistance);
         });
+
+
+        // update these later to work for all entities idk
         this.socket.on('player:joined', player => this.world.upsertEntity(player, this.playerId));
         this.socket.on('player:left', ({ id }) => this.world.removeEntity(id));
+
+
+        // receive info about world events / updates
         this.socket.on('chunk:data', data => this.chunkManager.receive(data));
         this.socket.on('block:update', change => {
             if (change.block?.type && change.block.type !== 'air') this.renderer.ensureBlockTexture(change.block.type);
@@ -94,8 +112,6 @@ export default class User {
             }
             this.chunkManager.onBlockChanged(change);
         });
-        this.socket.on('particle:spawn', event => this.particles.handleEvent(event));
-        this.socket.on('audio:play', event => this.audio.play(event));
         this.socket.on('world:snapshot', snapshot => {
             this.world.daylight = snapshot.daylight;
             const visibleIds = new Set();
@@ -104,9 +120,14 @@ export default class User {
                 this.world.upsertEntity(entity, this.playerId);
             }
 
-            // Remove entities omitted from this client's visibility snapshot.
+            // remove entities that aren't visible anymore
             for (const id of this.world.entities.keys()) if (!visibleIds.has(id)) this.world.removeEntity(id);
         });
+        this.socket.on('particle:spawn', event => this.particles.handleEvent(event));
+        this.socket.on('audio:play', event => this.audio.play(event));
+
+
+        // bye bye!
         this.socket.on('disconnect', () => {
             this.playerId = null;
             this.chunkManager.clear();
@@ -116,42 +137,60 @@ export default class User {
         });
     }
 
+
+    // Expose input pause state to the HUD without duplicating the input flag.
     get paused() { return this.input.paused; }
 
+    // Advance local effects, request chunks, send input, and ease snapshot positions.
     update(timestamp) {
+        // determine the dt
         const deltaScale = this.previousUpdateTime === null
             ? 1
             : Math.min(0.1, (timestamp - this.previousUpdateTime) / 1000) * 60;
         this.previousUpdateTime = timestamp;
-        this.particles.update(deltaScale);
-        this.updateInventory(deltaScale);
-        if (this.playerId !== null) this.chunkManager.update(this.player);
+
+        // send input to the server if enough time has passed
         if (timestamp - this.lastInputSent >= INPUT_SEND_MILLISECONDS && this.playerId !== null) {
             this.socket.emit('player:input', this.input.snapshot());
             this.lastInputSent = timestamp;
         }
-        // Ease every replica, including the local player, toward authoritative
-        // server positions instead of snapping backward on each snapshot.
-        // This smooths the network snapshots while keeping movement responsive.
+
+        // ease movement of all client-side entities toward their actual positions
         for (const entity of this.world.entities.values()) {
             if (!entity.targetPos) continue;
             for (let axis = 0; axis < 3; axis++) {
                 entity.pos[axis] += (entity.targetPos[axis] - entity.pos[axis]) * ENTITY_POSITION_INTERPOLATION;
             }
         }
-        this.player.head.pos = this.player.pos;
+
+        // set local outlined block
+        const { forward } = getViewBasis(this.player.orientation);
+        const hit = raycast(this.player.pos, forward, this.world, this.player.reach ?? 5);
+        this.player.outlinedBlock = hit ? { pos: hit.position, type: hit.block.type } : null;
+
+        // update dependent systems
+        this.particles.update(deltaScale);
+        this.updateInventory(deltaScale);
+        if (this.playerId !== null) this.chunkManager.update(this.player);
         this.camera.update();
+        this.updateMaps(timestamp);
     }
 
     updateMaps(timestamp) {
+        // maps are expensive to update
         if (timestamp - this.lastChunkMapRefresh < CHUNK_MAP_REFRESH_MILLISECONDS) return;
+        
         for (const map of this.hud.maps) map.uploadData(this.player.pos, this.world);
         this.lastChunkMapRefresh = timestamp;
     }
 
-    render() { this.renderer.render(this.world, this.camera, this.player, this.particles); }
-
     draw(fps) {
+        // render the 3d world, then draw HUD on top
+        this.renderer.render(this.world, this.camera, this.player, this.particles);
+        this.hud.draw(this.paused, this.getDebugTexts(fps), this.player, this.input, this.inventoryView);
+    }
+
+    getDebugTexts(fps) {
         const player = this.player, world = this.world, chunkManager = this.chunkManager;
         const debugTexts = [
             `${Math.round(player.pos[0])}, ${Math.round(player.pos[1])}, ${Math.round(player.pos[2])}`,
@@ -161,6 +200,6 @@ export default class User {
             `Resident Chunks: ${world.chunks.size}`, `Active Chunks: ${chunkManager.getActiveChunkCount()}`,
             `Unmeshed Chunks: ${chunkManager.dirty.length}`, `Requested Chunks: ${chunkManager.getPendingCount()}`,
         ];
-        this.hud.draw(this.paused, debugTexts, player, this.input, this.inventoryView);
+        return debugTexts;
     }
 }

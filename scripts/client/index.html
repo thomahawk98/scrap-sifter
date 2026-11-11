@@ -5,12 +5,14 @@
     <meta charset="utf-8" />
     <title>Scrap Sifter</title>
     <style>
+        /* Fill the viewport with one shared WebGL and HUD presentation. */
         body {
             margin: 0;
             overflow: hidden;
             background: rgb(135, 206, 235);
         }
 
+        /* Both render surfaces cover the viewport; the HUD sits above WebGL. */
         canvas {
             position: absolute;
             top: 0;
@@ -34,8 +36,9 @@
 <body>
     <canvas id="glcanvas"></canvas>
     <canvas id="hudcanvas"></canvas>
+    
     <script src="/socket.io/socket.io.js"></script>
-    <script type="module" src="./scripts/dual.js"></script>
+    <script type="module" src="./main.js"></script>
 </body>
 
 </html>

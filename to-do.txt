@@ -37,6 +37,7 @@ make certain audios fade more with distance
 pitch up / down audio for variation
 delete entities after awhile
 make bullets destroy blocks based on damage, change stone health to match
+audio switch pan / volume periodically
 
 DONE:
 DONE day / night cycle

@@ -4,6 +4,7 @@ import BulletItem from '../items/bullet-item.js';
 import BombItem from '../items/bomb-item.js';
 
 export default class Inventory {
+    // Initialize a server-owned inventory and optionally seed a named preset.
     constructor(presetName = null) {
         this.items = presetName ? this.getPreset(presetName) : [];
         this.selectedSlot = 0;
@@ -13,10 +14,12 @@ export default class Inventory {
         this.cursorItem = null;
     }
 
+    // Resolve the active usable stack while ignoring exhausted or deleted items.
     getSelectedItem() {
         return this.items.find(item => item.slot == this.selectedSlot && !item.delete && item.amount > 0);
     }
 
+    // Apply an item's action and consume one unit only when it succeeds.
     useSelectedItem(user, world) {
         const item = this.getSelectedItem();
         if (!item || typeof item.use !== 'function' || !item.use(user, world)) return null;
@@ -26,6 +29,7 @@ export default class Inventory {
         return item;
     }
 
+    // Construct the existing named inventory preset or return an empty inventory.
     getPreset(preset) {
         switch (preset) {
             case 'default': return [
@@ -38,11 +42,13 @@ export default class Inventory {
         }
     }
 
+    // Remove exhausted stacks after the current inventory operation.
     cleanupDeletedItems() {
         this.items = this.items.filter(item => !item.delete && item.amount > 0);
     }
 
     // Add a world drop to a compatible stack, then the first open slot.
+    // Merge compatible stacks before occupying the first free slot.
     addItem(item) {
         if (!item || item.amount <= 0) return false;
         item.maxStack ??= 64;
@@ -61,6 +67,7 @@ export default class Inventory {
         return true;
     }
 
+    // Check whether two stacks have compatible serialized item values and capacity.
     canBeCombined(stationaryItem, movingItem) {
         if (!stationaryItem || !movingItem) return false;
         if (JSON.stringify(stationaryItem) === JSON.stringify(movingItem)) return false;
@@ -70,6 +77,7 @@ export default class Inventory {
         return true;
     }
 
+    // Move as many units as possible into the stationary stack.
     combineItems(stationaryItem, movingItem) {
         if (!this.canBeCombined(stationaryItem, movingItem)) return null;
         const spaceLeft = (stationaryItem.maxStack || 64) - stationaryItem.amount;
@@ -84,6 +92,7 @@ export default class Inventory {
         return false;
     }
 
+    // Exchange two slot assignments, combining stacks when their types match.
     swapItemsBySlot(slot1, slot2) {
         if (slot1 == null || slot2 == null) return false;
         const item1 = this.items.find(item => item.slot == slot1 && !item.delete);
@@ -95,6 +104,7 @@ export default class Inventory {
     }
 
     // A click picks up a stack, places it, merges compatible stacks, or swaps.
+    // Handle the server-authoritative pickup, placement, merge, or swap action.
     clickSlot(slot) {
         if (!Number.isInteger(slot) || slot < 0 || slot >= this.WIDTH * this.HEIGHT) return false;
         this.cleanupDeletedItems();

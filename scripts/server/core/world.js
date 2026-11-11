@@ -6,6 +6,7 @@ import PlayerMovementTracker from '../systems/player-movement-tracker.js';
 import WorldAudioSystem from '../systems/world-audio.js';
 
 export default class World {
+    // Initialize authoritative state and shared systems before the first tick.
     constructor() {
         this.seed = Math.round(Math.random() * 10000);
         this.time = 0;
@@ -27,6 +28,7 @@ export default class World {
         this.update();
     }
 
+    // Advance world time and publish the current daylight value.
     update(deltaSeconds = 1 / 60) {
         this.time += deltaSeconds;
         this.daylight = 1; // always day
@@ -40,10 +42,12 @@ export default class World {
         */
     }
 
+    // Build the stable coordinate key shared by chunk storage and network messages.
     getChunkKey(cx, cy, cz) {
         return `${cx},${cy},${cz}`;
     }
 
+    // Register a player with entity storage and chunk-boundary tracking.
     addPlayer(player) {
         this.entities.add(player);
         this.players.set(player.id, player);
@@ -51,6 +55,7 @@ export default class World {
         return player;
     }
 
+    // Remove player, movement tracking, and entity state by object or ID.
     removePlayer(playerOrId) {
         const playerId = typeof playerOrId === 'object' ? playerOrId.id : playerOrId;
         this.playerTrackers.delete(playerId);
@@ -58,14 +63,17 @@ export default class World {
         return this.entities.remove(playerId);
     }
 
+    // Expose connected players to simulation and transport consumers.
     getPlayers() {
         return this.players.values();
     }
 
+    // Refresh every tracked player's chunk coordinates after simulation movement.
     updatePlayerTrackers() {
         for (const tracker of this.playerTrackers.values()) tracker.update();
     }
 
+    // Consume the aggregate movement signal while clearing individual latches.
     consumePlayerChunkBorderCrossings() {
         let crossed = false;
         for (const tracker of this.playerTrackers.values()) {
@@ -74,10 +82,12 @@ export default class World {
         return crossed;
     }
 
+    // Convert world-space block coordinates to their containing chunk coordinates.
     getChunkCoords(x, y, z) {
         return [x, y, z].map(a => Math.floor(a / this.CHUNK_SIZE));
     };
 
+    // Return chunk data only after generation has fully completed.
     getChunk(cx, cy, cz) {
         const key = this.getChunkKey(cx, cy, cz);
 
@@ -85,10 +95,12 @@ export default class World {
         return this.validateChunkData(chunk) ? chunk : null;
     }
 
+    // Keep pending chunks out of collision and block queries.
     validateChunkData(chunk) {
         return !!chunk && chunk.dataStatus === 'ready' && !!chunk.blocks;
     }
 
+    // Resolve a block coordinate and return a decoded air or solid block record.
     getBlock(x, y, z) {
         const [cx, cy, cz] = this.getChunkCoords(x, y, z);
 
@@ -107,6 +119,7 @@ export default class World {
         return { pos: [x, y, z], ...block };
     }
 
+    // Update a ready chunk and notify observers about authoritative block changes.
     setBlock(x, y, z, block, { playBreakSound = true } = {}) {
         const [cx, cy, cz] = this.getChunkCoords(x, y, z);
         const chunk = this.getChunk(cx, cy, cz);
@@ -132,6 +145,7 @@ export default class World {
         return success;
     };
 
+    // Break the selected voxel, award its drop, and clear the player's outline.
     breakBlock(hit, player) {
         const block = this.getBlock(...hit.position);
         if (!block) return console.log('no block found at', hit.position);
@@ -149,11 +163,14 @@ export default class World {
         return true;
     }
 
+    // Queue a transient visual event for the next network tick.
     emitParticleEvent(event) { this.particleEvents.push(event); }
 
+    // Transfer queued effects to the transport without retaining prior events.
     drainParticleEvents() { return this.particleEvents.splice(0); }
 
 
+    // Place the selected block adjacent to a ray hit when collision checks pass.
     placeBlock(hit, player) {
         const item = player.inventory.getSelectedItem();
         if (!item || item.kind === 'usable' || item.amount <= 0) return false;
@@ -183,6 +200,7 @@ export default class World {
         }
     }
 
+    // Validate inventory, occupancy, and entity clearance before committing placement.
     validateBlockPlacement(block, player) {
         const [x, y, z] = block.pos;
 

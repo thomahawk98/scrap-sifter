@@ -5,6 +5,7 @@ let nextEntityId = 1;
 // Shared entity contract: position and orientation are updated on the CPU;
 // immutable mesh data stays with the geometry and is uploaded once by Renderer.
 export default class Entity {
+    // Initialize the shared position, physics, appearance, and health contract.
     constructor({ pos = [0, 0, 0], orientation = [1, 0, 0, 0], scale = [1, 1, 1], size = null, geometry = null, material = {} } = {}) {
         this.id = nextEntityId++;
         this.pos = [...pos];
@@ -24,14 +25,17 @@ export default class Entity {
     }
 
     // Shared acceleration, velocity integration, collision, and damping path.
+    // Scale input acceleration by the frame's simulation step.
     applyAcceleration(acceleration, deltaScale = 1) {
         this.velocity = this.velocity.map((value, axis) => value + acceleration[axis] * deltaScale);
     }
 
+    // Read the current movement multiplier from the physics medium.
     getMovementTraction() {
         return physics.getFluidTraction(this);
     }
 
+    // Apply bounded health damage and run the entity-specific death path at zero.
     takeDamage(amount, source = null, world = null) {
         const damage = Number.isFinite(amount) ? Math.max(0, Math.round(amount)) : 0;
         if (damage === 0 || this.health <= 0) return false;
@@ -53,6 +57,7 @@ export default class Entity {
         this.visible = false;
     }
 
+    // Advance the shared physics path when this entity has a world context.
     update(deltaScale = 1, { world } = {}) {
         if (world) physics.moveEntity(this, world, deltaScale);
     }

@@ -29,6 +29,7 @@ void main() {
 // Text is rasterized once into a small atlas, then each name is a camera-facing
 // world-space quad. This keeps labels subject to perspective without HUD projection.
 export default class NametagRenderer {
+    // Allocate the text atlas, shader, and reusable buffers for player labels.
     constructor(gl) {
         this.gl = gl;
         this.program = createProgram(gl, VERTEX_SHADER, FRAGMENT_SHADER);
@@ -58,6 +59,7 @@ export default class NametagRenderer {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     }
 
+    // Select nearby named players, rebuild labels as needed, and draw billboards.
     render(entities, localPlayer, camera, view, projection, maxDistance) {
         const maxDistanceSquared = maxDistance * maxDistance;
         const visible = [];
@@ -124,6 +126,7 @@ export default class NametagRenderer {
         gl.enable(gl.DEPTH_TEST);
     }
 
+    // Reuse a label slot when possible and rasterize new or changed player names.
     getLabel(id, name) {
         let label = this.labels.get(id);
         if (label?.name === name) return label;
@@ -156,6 +159,7 @@ export default class NametagRenderer {
         return label;
     }
 
+    // Recycle atlas slots for players that are no longer visible.
     releaseInactiveLabels(activeIds) {
         for (const [id, label] of this.labels) {
             if (activeIds.has(id)) continue;
@@ -168,6 +172,7 @@ export default class NametagRenderer {
         }
     }
 
+    // Upload changed label pixels only after the current frame has prepared them.
     uploadAtlas() {
         const gl = this.gl;
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
@@ -176,6 +181,7 @@ export default class NametagRenderer {
         this.atlasDirty = false;
     }
 
+    // Append the four camera-facing vertices and six indices for one name tag.
     appendBillboard(vertices, indices, entity, label, basis) {
         const { right, up } = basis;
         const height = TAG_HEIGHT;
@@ -212,6 +218,7 @@ export default class NametagRenderer {
     }
 }
 
+// Compile the nametag vertex and fragment shaders into a linked program.
 function createProgram(gl, vertexSource, fragmentSource) {
     const compile = (type, source) => {
         const shader = gl.createShader(type);

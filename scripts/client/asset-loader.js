@@ -4,6 +4,7 @@ const AUDIO_EXTENSIONS = /\.(ogg|mp3|wav|webm|m4a)$/i;
 // Preloads browser assets before the game connects to the world server. Loaded
 // resources are passed directly to renderers/processors so they are not fetched twice.
 export default class AssetLoader {
+    // Prepare the progress surface and resource maps before preloading begins.
     constructor(canvas) {
         this.canvas = canvas;
         this.context = canvas.getContext('2d');
@@ -17,6 +18,7 @@ export default class AssetLoader {
         this.startedAt = performance.now();
     }
 
+    // Fetch the asset manifest, load each media group, and report completion.
     async load() {
         this.fitCanvas();
         this.drawProgress('Finding assets');
@@ -41,6 +43,7 @@ export default class AssetLoader {
         return this;
     }
 
+    // Load one image, decoded audio buffer, or registered browser font.
     async loadOne(kind, asset) {
         try {
             if (kind === 'images') {
@@ -67,12 +70,14 @@ export default class AssetLoader {
         }
     }
 
+    // Fetch a successful asset response as a blob for media decoders.
     async fetchBlob(url) {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`Request failed (${response.status}).`);
         return response.blob();
     }
 
+    // Index each resource by filename, basename, and manifest URL.
     storeAsset(map, asset, value) {
         const filename = asset.name;
         const basename = filename.replace(/\.[^.]+$/, '');
@@ -81,15 +86,18 @@ export default class AssetLoader {
         map.set(asset.url, value);
     }
 
+    // Resolve a preloaded image through the asset loader's async interface.
     getImage(name) {
         return Promise.resolve(this.images.get(name) ?? null);
     }
 
+    // Resolve audio by either extensionless key or its known filename.
     getAudio(name) {
         const filename = AUDIO_EXTENSIONS.test(name) ? name : `${name}.mp3`;
         return this.audios.get(name) ?? this.audios.get(filename) ?? null;
     }
 
+    // Lazily construct one Web Audio context for preload and playback.
     getAudioContext() {
         if (this.audioContext) return this.audioContext;
         const AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext;
@@ -97,12 +105,14 @@ export default class AssetLoader {
         return this.audioContext;
     }
 
+    // Match the progress canvas drawing buffer to its on-screen dimensions.
     fitCanvas() {
         const bounds = this.canvas.getBoundingClientRect();
         this.canvas.width = Math.max(1, Math.round(bounds.width));
         this.canvas.height = Math.max(1, Math.round(bounds.height));
     }
 
+    // Draw the current preload message and proportional completion bar.
     drawProgress(message) {
         const { context: ctx, canvas } = this;
         const progress = this.totalAssets ? this.loadedAssets / this.totalAssets : 0;

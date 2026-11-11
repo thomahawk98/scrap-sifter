@@ -7,6 +7,7 @@ const ITEM_ICON_FALLBACKS = {
 };
 
 export default class InventoryView {
+    // Bind visual slot layout to the local player and server click callback.
     constructor(player, onSlotClick = () => {}, textureAtlas = null) {
         this.player = player;
         this.onSlotClick = onSlotClick;
@@ -18,6 +19,7 @@ export default class InventoryView {
         this.wasInventoryClick = false;
     }
 
+    // Keep legacy view properties delegated to the local player's inventory model.
     get inventory() { return this.player.inventory; }
     get items() { return this.inventory.items; }
     get selectedSlot() { return this.inventory.selectedSlot; }
@@ -25,6 +27,7 @@ export default class InventoryView {
     get HEIGHT() { return this.inventory.HEIGHT; }
     get open() { return this.inventory.open; }
 
+    // Draw the hotbar, animated inventory grid, and held cursor stack.
     draw(ctx, canvas) {
         for (let i = 0; i < this.WIDTH * this.HEIGHT; i++) {
             const { x, y } = this.getDrawPosition(i, canvas);
@@ -53,6 +56,7 @@ export default class InventoryView {
 
     }
 
+    // Draw one slot background and its hover or selection outline.
     drawSlot(ctx, x, y, selected, inBox) {
         ctx.fillStyle = inBox ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.15)';
         ctx.strokeStyle = 'black';
@@ -65,6 +69,7 @@ export default class InventoryView {
         ctx.stroke();
     }
 
+    // Draw an item's model preview, label, and current stack count.
     drawItem(ctx, item, x, y) {
         const icon = item.icon ?? ITEM_ICON_FALLBACKS[item.type] ?? {
             shape: 'cube',
@@ -106,6 +111,7 @@ export default class InventoryView {
         ctx.fillText(item.amount, x + this.SLOT_SIZE * 0.4 - 5, y + this.SLOT_SIZE * 0.4);
     }
 
+    // Return a cached image or start one shared atlas-backed image request.
     getTextureImage(name, category) {
         const assetName = `${name}-${category}`;
         if (this.textureImages.has(assetName)) return this.textureImages.get(assetName);
@@ -119,6 +125,7 @@ export default class InventoryView {
         return null;
     }
 
+    // Project the visible cube faces into the inventory's isometric icon.
     drawIsometricCube(ctx, icon, centerX, centerY, textureImage = null) {
         const scale = icon.scale ?? [1, 1, 1];
         // Map world units to pixels so relative projectile sizes stay visible.
@@ -178,6 +185,7 @@ export default class InventoryView {
         ], 1.15, 2);
     }
 
+    // Consume click edges, forward selected slots, clean stacks, and animate the grid.
     update(canvas, deltaScale = 1) {
         const inventoryClick = this.player.inputs.consumeMousePress
             ? this.player.inputs.consumeMousePress('inventoryClick')
@@ -197,6 +205,7 @@ export default class InventoryView {
         else this.openAnimation = Math.max(this.openAnimation - animationStep, 0);
     }
 
+    // Find the visible slot beneath the current pointer position.
     getMouseHoveredSlot(canvas) {
         for (let i = 0; i < this.WIDTH * this.HEIGHT; i++) {
             const { x, y } = this.getDrawPosition(i, canvas);
@@ -212,10 +221,12 @@ export default class InventoryView {
         return null;
     }
 
+    // Preserve the inventory model's slot-swap operation for existing callers.
     swapItemsBySlot(slot1, slot2) {
         return this.inventory.swapItemsBySlot(slot1, slot2);
     }
 
+    // Interpolate each slot between its compact hotbar and expanded grid positions.
     getDrawPosition(slot, canvas) {
         const row = Math.floor(slot / this.WIDTH);
         const col = slot % this.WIDTH;
@@ -238,6 +249,7 @@ export default class InventoryView {
     }
 }
 
+// Convert an icon's base color and face lighting into a readable CSS color.
 function shadeColor(color, brightness) {
     // Keep even black item models readable against the translucent slot fill.
     const channels = color.map(value => Math.max(0.06, Math.min(1, value * brightness)) * 255);

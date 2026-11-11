@@ -6,6 +6,7 @@ const BULLET_SCALE = [0.25, 0.25, 0.25];
 const BULLET_DAMAGE = 25;
 
 export default class Bullet extends Entity {
+    // Normalize the travel direction once and configure bullet collision damage.
     constructor(pos, direction, owner = null) {
         super({
             pos,
@@ -21,6 +22,7 @@ export default class Bullet extends Entity {
         this.velocity = direction.map(axis => axis / length * speed);
     }
 
+    // Resolve block impacts first, then damage the first overlapping target.
     update(deltaScale = 1, { world } = {}) {
         super.update(deltaScale, { world });
         if (!world) return;
@@ -45,6 +47,7 @@ export default class Bullet extends Entity {
         }
     }
 
+    // Emit a positional visual event for the client's particle system.
     emitDeathParticles(world) {
         world.emitParticleEvent({
             type: 'bullet-death',
@@ -54,6 +57,7 @@ export default class Bullet extends Entity {
     }
 }
 
+// Use strict overlap on all three axes for projectile/entity contacts.
 function overlaps(first, second) {
     return Math.abs(first.pos[0] - second.pos[0]) < (first.size.x + second.size.x) * 0.5 &&
         Math.abs(first.pos[1] - second.pos[1]) < (first.size.y + second.size.y) * 0.5 &&

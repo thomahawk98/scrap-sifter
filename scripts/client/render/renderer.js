@@ -5,6 +5,7 @@ import ParticleRenderer from './particle-renderer.js';
 import NametagRenderer from './nametag-renderer.js';
 import TextureAtlas from './texture-atlas.js';
 
+// Build the twelve line segments used to outline one selected voxel.
 function getOutlineVertices(x, y, z) {
     const corners = [
         [x, y, z],
@@ -33,6 +34,7 @@ function getOutlineVertices(x, y, z) {
 }
 
 export default class Renderer {
+    // Create shared WebGL programs, atlas resources, and render helpers.
     constructor(canvas, assetLoader = null) {
         this.canvas = canvas;
         this.gl = canvas.getContext('webgl');
@@ -53,6 +55,7 @@ export default class Renderer {
         this.gl.viewport(0, 0, this.gl.drawingBufferWidth, this.gl.drawingBufferHeight);
     }
 
+    // Resolve shader interfaces and enable the WebGL features used by world draws.
     init() {
         const gl = this.gl;
 
@@ -127,6 +130,7 @@ export default class Renderer {
     // -------------------------------
     // SHADER METHODS
     // -------------------------------
+    // Compile and link a vertex/fragment shader pair into a WebGL program.
     createProgram(vsSource, fsSource) {
         const gl = this.gl;
 
@@ -149,6 +153,7 @@ export default class Renderer {
         return program;
     }
 
+    // Compile one shader and return null after logging a WebGL compiler error.
     compileShader(type, source) {
         const gl = this.gl;
         const shader = gl.createShader(type);
@@ -199,6 +204,7 @@ export default class Renderer {
         }
     }
 
+    // Delete the vertex and index buffers owned by an evicted chunk key.
     deleteChunk(key) {
         const buffers = this.chunkBuffers.get(key);
         if (!buffers) return;
@@ -207,8 +213,10 @@ export default class Renderer {
         this.chunkBuffers.delete(key);
     }
 
+    // Report whether GPU geometry has been created for a chunk key.
     hasChunk(key) { return this.chunkBuffers.has(key); }
 
+    // Draw opaque terrain, entities, particles, labels, and the selected block outline.
     render(world, camera, player, particleSystem = null) {
         const gl = this.gl;
 
@@ -276,6 +284,7 @@ export default class Renderer {
         }
     }
 
+    // Upload the current camera projection and view matrices to the world program.
     setUpViewMatrices(camera) {
         const gl = this.gl;
 
@@ -290,6 +299,7 @@ export default class Renderer {
         return [proj, view]
     }
 
+    // Bind the cached chunk buffers and configure their interleaved vertex layout.
     renderChunk(chunk) {
         const buffers = this.chunkBuffers.get(`${chunk.cx},${chunk.cy},${chunk.cz}`);
         if (!buffers) return false;
@@ -334,6 +344,7 @@ export default class Renderer {
         );
     }
 
+    // Draw the selected block's wireframe using the dedicated outline program.
     renderOutline(block, view, proj) {
         const gl = this.gl;
         const outlineVertices = getOutlineVertices(...block.pos);
@@ -355,15 +366,18 @@ export default class Renderer {
         gl.useProgram(this.worldProgram);
     }
 
+    // Toggle block and entity textures together for existing callers.
     setTexturesEnabled(enabled) {
         this.setBlockTexturesEnabled(enabled);
         this.setEntityTexturesEnabled(enabled);
     }
 
+    // Enable or disable only the block atlas in the world shader.
     setBlockTexturesEnabled(enabled) {
         this.textureAtlas.blockTexturesEnabled = Boolean(enabled);
     }
 
+    // Enable or disable only entity textures in the world shader.
     setEntityTexturesEnabled(enabled) {
         this.textureAtlas.entityTexturesEnabled = Boolean(enabled);
     }
@@ -374,6 +388,7 @@ export default class Renderer {
         this.textureAtlas.setSmoothingEnabled(enabled);
     }
 
+    // Load a block's atlas tile before its first textured chunk draw.
     ensureBlockTexture(type) {
         this.textureAtlas.ensureBlockTexture(type);
     }

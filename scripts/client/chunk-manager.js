@@ -7,6 +7,7 @@ const UNKNOWN_VOXEL = 2;
 // Tracks the local view radius, requests server voxel data, and builds/uploads
 // meshes without sending render geometry over the network.
 export default class ClientChunkManager {
+    // Initialize the desired view window, worker pool, and socket rejection handler.
     constructor(world, socket, renderer, {
         workerCount = Math.max(1, Math.min(2, (navigator.hardwareConcurrency || 4) - 1)),
     } = {}) {
@@ -32,6 +33,7 @@ export default class ClientChunkManager {
         this.socket.on('chunk:reject', key => this.handleRejectedRequest(key));
     }
 
+    // Install received voxels, request meshes, and release data outside the view window.
     receive(data) {
         const key = this.world.getChunkKey(...data.chunkPos);
         this.requested.delete(key);
@@ -61,6 +63,7 @@ export default class ClientChunkManager {
         }
     }
 
+    // Retry a rejected boundary request after local position snapshots can catch up.
     handleRejectedRequest(key) {
         this.requested.delete(key);
         // A stale position may put a boundary request just outside the server's
@@ -72,6 +75,7 @@ export default class ClientChunkManager {
         }, 250);
     }
 
+    // Refresh visibility, flush network queues, and spend the current mesh budget.
     update(player) {
         if (!player?.pos) return;
         const center = this.world.getChunkCoords(...player.pos);
@@ -83,6 +87,7 @@ export default class ClientChunkManager {
         for (const chunk of this.world.chunks.values()) chunk.fade = Math.min(chunk.maxFade, chunk.fade + 1);
     }
 
+    // Reconcile the spherical view set with requests, resident data, and old borders.
     refreshDesired(center) {
         const next = new Set(), distance = this.world.renderDistance;
         for (let cx = center[0] - distance; cx <= center[0] + distance; cx++)
@@ -129,6 +134,7 @@ export default class ClientChunkManager {
         this.lastDistance = distance;
     }
 
+    // Send bounded request and release batches over Socket.IO.
     sendPending() {
         const MAX_BATCH = 256;
         this.pendingRelease = this.pendingRelease.filter(key => !this.desired.has(key));
@@ -139,6 +145,7 @@ export default class ClientChunkManager {
         if (this.pendingRelease.length) this.socket.emit('chunks:release', this.pendingRelease.splice(0, MAX_BATCH));
     }
 
+    // Add a chunk to the deduplicated list of geometry that must be rebuilt.
     queue(chunk) {
         if (this.queued.has(chunk)) return;
         chunk.meshStatus = 'dirty';
@@ -146,6 +153,7 @@ export default class ClientChunkManager {
         this.queued.add(chunk);
     }
 
+    // Dispatch ready dirty chunks to idle mesh workers.
     meshBudget() {
         for (const slot of this.meshWorkers) {
             if (slot.busy) continue;
@@ -170,6 +178,7 @@ export default class ClientChunkManager {
         }
     }
 
+    // Pack the surrounding one-voxel shell needed for face culling and AO.
     createBorderOccupancy(chunk) {
         const paddedSize = CHUNK_SIZE + 2;
         const paddedPlane = paddedSize * paddedSize;
@@ -184,6 +193,7 @@ export default class ClientChunkManager {
         return occupancy;
     }
 
+    // Accept a worker mesh only when its chunk identity and revision are current.
     handleMeshResult(slot, { key, revision, geometry }) {
         const chunk = slot.chunk;
         slot.busy = false;
@@ -200,6 +210,7 @@ export default class ClientChunkManager {
         this.meshBudget();
     }
 
+    // Recover from a worker failure by rebuilding the still-current chunk locally.
     handleMeshError(slot, error) {
         console.error('Chunk meshing worker failed; using main-thread fallback.', error);
         const chunk = slot.chunk;
@@ -214,6 +225,7 @@ export default class ClientChunkManager {
         this.meshBudget();
     }
 
+    // Apply an authoritative block mutation and queue every affected chunk mesh.
     onBlockChanged(change) {
         this.world.setBlock(...change.blockPos, change.block);
         const [cx, cy, cz] = change.chunkPos;
@@ -229,8 +241,11 @@ export default class ClientChunkManager {
         }
     }
 
+    // Count desired chunks whose voxel payload has reached the client.
     getActiveChunkCount() { return [...this.desired].filter(key => this.world.chunks.has(key)).length; }
+    // Count pending requests and queued or in-flight mesh work for diagnostics.
     getPendingCount() { return this.requested.size + this.dirty.length + this.meshWorkers.filter(slot => slot.busy).length; }
+    // Release subscriptions and reset all client chunk, mesh, and request state.
     clear() {
         const releases = [...new Set([...this.desired, ...this.pendingRelease])];
         if (this.socket.connected) {
@@ -244,6 +259,7 @@ export default class ClientChunkManager {
 
 const modulo = (value, divisor) => ((value % divisor) + divisor) % divisor;
 
+// Normalize Socket.IO's possible typed-array representations into voxel IDs.
 function normalizeVoxelData(voxels) {
     if (voxels instanceof Uint16Array) return voxels;
     if (voxels instanceof ArrayBuffer) return new Uint16Array(voxels);

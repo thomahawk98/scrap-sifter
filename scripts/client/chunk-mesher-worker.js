@@ -2,6 +2,7 @@ import ChunkMesher from './chunk-mesher.js';
 
 const mesher = new ChunkMesher();
 
+// Build a chunk mesh off the browser render thread and transfer its buffers back.
 self.onmessage = ({ data }) => {
     const { key, cx, cy, cz, revision, blocks, borderOccupancy } = data;
     const chunk = {

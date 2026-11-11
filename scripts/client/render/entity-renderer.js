@@ -1,5 +1,6 @@
 // Transform local entity geometry into world space and cache its GPU buffers.
 // Entity motion updates matrices only, so static vertex data is uploaded once.
+// Build a world transform from entity scale, quaternion orientation, and position.
 function getModelMatrix(entity) {
     const [w, x, y, z] = entity.orientation;
     const [sx, sy, sz] = entity.scale;
@@ -12,6 +13,7 @@ function getModelMatrix(entity) {
     ]);
 }
 
+// Multiply two column-major matrices for the entity model-view transform.
 function multiplyMatrices(a, b) {
     const out = new Float32Array(16);
     for (let column = 0; column < 4; column++) {
@@ -23,6 +25,7 @@ function multiplyMatrices(a, b) {
 }
 
 export default class EntityRenderer {
+    // Retain shared geometry and shader handles for all entity draws.
     constructor(gl, program, attributes, uniforms) {
         this.gl = gl;
         this.program = program;
@@ -32,6 +35,7 @@ export default class EntityRenderer {
         this.geometryBuffers = new Map();
     }
 
+    // Upload each immutable geometry object once and reuse its GPU buffers.
     getBuffers(geometry) {
         let buffers = this.geometryBuffers.get(geometry);
         if (buffers) return buffers;
@@ -50,6 +54,7 @@ export default class EntityRenderer {
         return buffers;
     }
 
+    // Apply the entity model transform and issue its indexed mesh draw.
     render(entity, viewMatrix, projectionMatrix) {
         const gl = this.gl;
         const buffers = this.getBuffers(entity.geometry);

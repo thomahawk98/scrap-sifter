@@ -1,6 +1,7 @@
 import { Worker } from 'node:worker_threads';
 
 export default class ChunkGenerator {
+    // Create a small fixed worker pool and wire its message/error lifecycle.
     constructor(manager, { workerCount = 2, batchSize = 4 } = {}) {
         this.manager = manager;
         this.world = manager.world;
@@ -24,16 +25,19 @@ export default class ChunkGenerator {
         });
     }
 
+    // Snapshot player positions used to prioritize pending chunk work.
     setPlayerPositions(positions) {
         this.playerPositions = positions.map(position => [...position]);
     }
 
+    // Count queued and in-flight chunk requests for diagnostics.
     getPendingCount() {
         return this.requestQueue.size + this.workers.reduce(
             (count, slot) => count + (slot.batch?.length ?? 0), 0
         );
     }
 
+    // Enqueue a chunk once and mark its data lifecycle as generating.
     requestNewChunk(cx, cy, cz) {
         const key = this.world.getChunkKey(cx, cy, cz);
         const chunk = this.manager.createChunk(cx, cy, cz);
@@ -46,6 +50,7 @@ export default class ChunkGenerator {
         return chunk;
     }
 
+    // Cancel queued work that no subscribed client still needs.
     pruneUnsubscribed() {
         for (const [key, request] of this.requestQueue) {
             if (this.manager.requestedBy.has(key)) continue;
@@ -54,6 +59,7 @@ export default class ChunkGenerator {
         }
     }
 
+    // Dispatch nearest pending batches to idle workers.
     processNextRequests() {
         if (!this.requestQueue.size || this.playerPositions.length === 0) return;
 
@@ -75,6 +81,7 @@ export default class ChunkGenerator {
         }
     }
 
+    // Take the closest queued chunks together to reduce worker round trips.
     takeNearestBatch() {
         // Each batch begins with the closest chunk, then takes the next closest
         // remaining requests for better locality and fewer worker round trips.
@@ -86,6 +93,7 @@ export default class ChunkGenerator {
         return batch;
     }
 
+    // Rank a chunk by its squared distance from the nearest player.
     getDistanceSquared(chunk) {
         let nearestDistanceSquared = Infinity;
         for (const position of this.playerPositions) {
@@ -97,6 +105,7 @@ export default class ChunkGenerator {
         return nearestDistanceSquared;
     }
 
+    // Apply a worker batch and immediately let the slot process more requests.
     handleWorkerMessage(slot, data) {
         const batch = slot.batch ?? [];
         const generatedChunks = new Map((data.chunks ?? []).map(chunk => [
@@ -116,6 +125,7 @@ export default class ChunkGenerator {
         this.processNextRequests();
     }
 
+    // Reset failed worker state and return its chunks to the retryable state.
     handleWorkerError(slot, error) {
         console.error(error);
         for (const request of slot.batch ?? []) this.manager.failGenerationRequest(request);

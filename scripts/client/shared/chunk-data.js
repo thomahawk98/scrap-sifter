@@ -5,6 +5,7 @@ import { encodeBlock, decodeBlock } from './block-registry.js';
 // The three statuses below describe independent parts of the pipeline rather
 // than one combined lifecycle state.
 export default class Chunk {
+    // Hold client voxel data and mesh status independently from GPU resources.
     constructor(cx, cy, cz) {
         this.cx = cx;
         this.cy = cy;
@@ -23,10 +24,12 @@ export default class Chunk {
         this.maxFade = 50;
     }
 
+    // Flatten chunk-local coordinates into the typed voxel buffer index.
     getIndex(lx, ly, lz) {
         return lx + ly * CHUNK_SIZE + lz * CHUNK_SIZE * CHUNK_SIZE;
     }
 
+    // Decode an occupied voxel only when a caller needs its block record.
     getBlock(lx, ly, lz, decode = true) {
         if (!this.blocks) return null;
         const id = this.blocks[this.getIndex(lx, ly, lz)];
@@ -34,6 +37,7 @@ export default class Chunk {
         return decode ? decodeBlock(id) : id;
     }
 
+    // Apply one block mutation and invalidate this chunk's cached geometry.
     setBlock(lx, ly, lz, block) {
         if (!this.blocks) return false;
         const encodedBlock = encodeBlock(block);
@@ -45,6 +49,7 @@ export default class Chunk {
         return true;
     }
 
+    // Install a server payload and mark block data ready for client queries.
     setBlockData(blocks, empty = false) {
         this.blocks = blocks;
         this.empty = empty;
@@ -53,6 +58,7 @@ export default class Chunk {
         this.invalidateMesh();
     }
 
+    // Invalidate mesh output whenever this chunk or its sampled neighbors change.
     invalidateMesh() {
         // Geometry depends on this chunk's blocks and its neighboring blocks.
         this.meshRevision++;

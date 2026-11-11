@@ -1,4 +1,4 @@
-const AUDIO_ASSET_ROOT = '/scripts/client/assets/audio/';
+const AUDIO_ASSET_ROOT = '/assets/audio/';
 const DEFAULT_MAX_DISTANCE = 192;
 const MIN_MUFFLE_FREQUENCY = 550;
 const MAX_MUFFLE_FREQUENCY = 22000;
@@ -13,6 +13,7 @@ const MAX_AUDIO_EVENT_AGE_MS = 2000;
 // All sound sources, including local UI sounds and server events, pass through
 // this processor so listener-specific effects stay entirely client-side.
 export default class AudioProcessor {
+    // Bind world queries, listener position, preload assets, and buffer caches.
     constructor({ world, getListener, assetRoot = AUDIO_ASSET_ROOT, assetLoader = null } = {}) {
         this.world = world;
         this.getListener = getListener ?? (() => null);
@@ -23,6 +24,7 @@ export default class AudioProcessor {
         this.warnedNames = new Set();
     }
 
+    // Play a client-originated sound through the same effects path as network events.
     playLocal(audioType, options = {}) {
         return this.play({
             scope: 'local', audioType, position: null,
@@ -30,11 +32,13 @@ export default class AudioProcessor {
         });
     }
 
+    // Validate and timestamp an incoming event before asynchronous loading begins.
     play(event) {
         if (!event || typeof event.audioType !== 'string') return Promise.resolve(false);
         return this.playAsync(event, performance.now());
     }
 
+    // Resume audio if needed, build the effect chain, and release nodes after playback.
     async playAsync(event, receivedAt) {
         const context = this.getContext();
         if (!context) return false;
@@ -82,6 +86,7 @@ export default class AudioProcessor {
         }
     }
 
+    // Reuse the preloaded context or lazily construct browser Web Audio support.
     getContext() {
         if (this.context) return this.context;
         const AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext;
@@ -93,6 +98,7 @@ export default class AudioProcessor {
         return this.context;
     }
 
+    // Reuse, preload, or fetch a decoded sound buffer for the requested asset.
     async getBuffer(audioType) {
         if (this.buffers.has(audioType)) return this.buffers.get(audioType);
         const preloaded = this.assetLoader?.getAudio(audioType);
@@ -112,6 +118,7 @@ export default class AudioProcessor {
         return buffer;
     }
 
+    // Fetch and decode one file, optionally keeping missing-asset logs quiet.
     async loadBuffer(audioType, warnOnMissing = true) {
         const filename = /\.(ogg|mp3|wav|webm|m4a)$/i.test(audioType)
             ? audioType
@@ -125,6 +132,7 @@ export default class AudioProcessor {
         return this.getContext().decodeAudioData(data);
     }
 
+    // Calculate attenuation, stereo pan, and filtering for this listener and source.
     getEffects(event) {
         const isPositional = event.scope === 'world' || (event.scope === 'player' && event.position);
         const listener = isPositional ? this.getListener() : null;
@@ -167,6 +175,7 @@ export default class AudioProcessor {
         };
     }
 
+    // Estimate wall transmission across several nearby paths between listener and source.
     measureOcclusion(listenerPosition, sourcePosition) {
         if (!this.world?.getVoxelState) return { transmission: 1 };
         const vector = sourcePosition.map((value, axis) => value - listenerPosition[axis]);
@@ -199,6 +208,7 @@ export default class AudioProcessor {
         return { transmission: totalTransmission / rayOffsets.length };
     }
 
+    // Sample solid cells along one source path and attenuate repeated cell hits once.
     traceTransmission(origin, target) {
         const vector = target.map((value, axis) => value - origin[axis]);
         const distance = Math.hypot(...vector);
@@ -214,6 +224,7 @@ export default class AudioProcessor {
         return OCCLUSION_VOLUME_TRANSMISSION ** solidCells.size;
     }
 
+    // Emit each asset or playback warning at most once per processor instance.
     warnOnce(key, message) {
         if (this.warnedNames.has(key)) return;
         this.warnedNames.add(key);
@@ -221,15 +232,18 @@ export default class AudioProcessor {
     }
 }
 
+// Bound finite audio values and use the minimum when a payload is invalid.
 function clamp(value, min, max) {
     return Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : min;
 }
 
+// Smooth a normalized distance into a near-field stereo pan response.
 function smoothstep(value) {
     const amount = clamp(value, 0, 1);
     return amount * amount * (3 - 2 * amount);
 }
 
+// Build the perpendicular basis used to sample offset occlusion rays.
 function cross(first, second) {
     return [
         first[1] * second[2] - first[2] * second[1],
@@ -238,6 +252,7 @@ function cross(first, second) {
     ];
 }
 
+// Normalize a direction vector while keeping a zero vector finite.
 function normalize(vector) {
     const length = Math.hypot(...vector) || 1;
     return vector.map(value => value / length);

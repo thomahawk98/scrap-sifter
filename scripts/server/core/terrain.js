@@ -1,15 +1,19 @@
 
-//perlin noise implementation
+// Fade coordinates smoothly so adjacent noise cells interpolate without hard edges.
 function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+// Interpolate between two corner contributions at the current fractional offset.
 function lerp(t, a, b) { return a + t * (b - a); }
+// Select and sign the gradient components encoded by a permutation hash.
 function grad(hash, x, y, z) {
     const h = hash & 15;
     const u = h < 8 ? x : y;
     const v = h < 4 ? y : h === 12 || h === 14 ? x : z;
     return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
 }
+// Map the signed noise result into the terrain generator's 0..1 density range.
 function scale(n) { return (1 + n) / 2; }
 
+// Evaluate deterministic three-dimensional Perlin noise with a cached shuffle table.
 var noise = function (x, y, z) {
     // The shuffle table is invariant; construct it once per worker instead of
     // rebuilding 512 entries for every octave of every voxel.
@@ -57,16 +61,18 @@ var noise = function (x, y, z) {
 }
 
 const Terrain = {
-    // The active generator uses one seeded 3D density field for solid blocks.
+    // Retain the height query used by callers alongside the active 3D density field.
     getHeightAt: function (x, z, seed) {
         return noise(x * 0.001, seed, z * 0.001) * 500; // simple height function
     },
 
+    // Classify a voxel as solid using its seeded terrain density.
     getSolidityAt: function (x, y, z, seed) {
         const density = this.generate3dNoiseValue(x, y, z, seed);
         return density < 0.5;
     },
 
+    // Combine several noise frequencies into a normalized terrain density.
     generate3dNoiseValue: function (x, y, z, seed, octaves = 3, baseFrequency = 0.025) {
         // octaves = how many layers of detail
         // baseFrequency = how "zoomed in" the noise is

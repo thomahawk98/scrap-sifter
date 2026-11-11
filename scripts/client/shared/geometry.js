@@ -1,3 +1,4 @@
+// Define voxel face geometry and AO sampling offsets shared by the mesher.
 export function getFaceDirs() {
     const faces = [
         {
@@ -68,4 +69,4 @@ export function getFaceDirs() {
         }
     ];
     return faces;
-}
+}

@@ -1,3 +1,4 @@
+// Transform world vertices and forward face, atlas, shade, and distance data.
 export const worldVS = `
 attribute vec3 position;
 attribute vec3 normal;
@@ -30,6 +31,7 @@ void main() {
 }`
     ;
 
+// Shade textured faces and combine ambient occlusion, daylight, fog, and chunk fade.
 export const worldFS = `precision mediump float;
 
 varying vec3 vNormal;
@@ -58,7 +60,7 @@ uniform float uFogFadeEnd;
 
 void main() {
     vec3 norm = normalize(vNormal);
-    
+
     vec3 lightTop = vec3(0.0, 1.0, 0.0);
     vec3 lightBottom = vec3(0.0, -1.0, 0.0);
     vec3 lightPosX = vec3(1.0, 0.0, 0.0);
@@ -95,7 +97,7 @@ void main() {
     // Apply distance fade
     float distanceFadeFactor = 1.0 - smoothstep(uSkyFadeStart, uSkyFadeEnd, vDistance);
     vec3 distanceFadeColor = mix(uSkyColor, fogColor, distanceFadeFactor);
-    
+
     vec3 black = vec3(0.0, 0.0, 0.0);
     vec3 darkenedColor = mix(black, distanceFadeColor, uDaylight);
 
@@ -107,6 +109,7 @@ void main() {
 }`
     ;
 
+// Transform line vertices for the selected block outline.
 export const outlineVS = `
 attribute vec3 position;
 uniform mat4 modelViewMatrix;
@@ -115,6 +118,7 @@ void main() {
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`
 
+// Render selected block outline lines as opaque white.
 export const outlineFS = `
 precision mediump float;
 void main() {

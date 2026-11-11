@@ -1,3 +1,4 @@
+// Select the rendered base color for a block type and face direction.
 export function getBlockFaceColor(type, normal = [0, 1, 0]) {
     // Normal directions: [x, y, z]
     const isTop = normal[1] == 1;
@@ -71,7 +72,7 @@ export function getBlockFaceColor(type, normal = [0, 1, 0]) {
 
         case 'magma':
             return [1, 0.5, 0];
-            
+
         case "gold":
             return [1.0, 0.84, 0];
         case "diamonds":
@@ -100,6 +101,7 @@ export function getBlockFaceColor(type, normal = [0, 1, 0]) {
     }
 }
 
+// Resolve the inventory drop type for special terrain blocks.
 export function getBlockDropType(type) {
     switch (type) {
         case 'grass':

@@ -2,10 +2,12 @@ const MAX_PARTICLES = 1800;
 
 // Client simulation for short-lived visual effects; particles are never networked individually.
 export default class ParticleSystem {
+    // Start with an empty, bounded collection of local visual effects.
     constructor() {
         this.particles = [];
     }
 
+    // Integrate particle motion, drag, and remaining lifetime for one frame.
     update(deltaScale = 1) {
         for (let index = this.particles.length - 1; index >= 0; index--) {
             const particle = this.particles[index];
@@ -23,23 +25,28 @@ export default class ParticleSystem {
         }
     }
 
+    // Add the warm and bright particle layers used for a bomb blast.
     spawnExplosion(position) {
         this.emit(position, [1, 0.38, 0.06], 100, 0.7, 30, 0.28, 0.56);
         this.emit(position, [1, 0.82, 0.2], 36, 0.35, 15, 0.18, 0.36);
     }
 
+    // Create a short burst matching the broken block's face color.
     spawnBlockBreak(position, color) {
         this.emit(position, color, 12, 0.125, 22, 0.08, 0.16);
     }
 
+    // Create a larger burst when a damageable entity dies.
     spawnEntityDeath(position, color) {
         this.emit(position, color, 44, 0.225, 32, 0.1, 0.2);
     }
 
+    // Create a small burst when a bullet is removed after impact.
     spawnBulletDeath(position, color) {
         this.emit(position, color, 8, 0.15, 18, 0.1, 0.2);
     }
 
+    // Translate supported server event types into local particle bursts.
     handleEvent(event) {
         if (!event?.position) return;
         if (event.type === 'explosion') this.spawnExplosion(event.position);
@@ -47,6 +54,7 @@ export default class ParticleSystem {
         else if (event.type === 'bullet-death') this.spawnBulletDeath(event.position, event.color ?? [0, 0, 0]);
     }
 
+    // Add randomized particles while respecting the fixed collection cap.
     emit(position, color, count, speed, life, minSize, maxSize) {
         for (let index = 0; index < count && this.particles.length < MAX_PARTICLES; index++) {
             const direction = randomDirection();
@@ -65,6 +73,7 @@ export default class ParticleSystem {
     }
 }
 
+// Sample a uniform random direction on the unit sphere.
 function randomDirection() {
     const y = Math.random() * 2 - 1;
     const angle = Math.random() * Math.PI * 2;

@@ -4,6 +4,7 @@ const REPORT_WINDOW_MS = 5000;
 
 // Periodic server-side timing to separate simulation cost from network work.
 export default class ServerLagMonitor {
+    // Keep timing samples for one server tick interval and enable loop-delay metrics.
     constructor(tickIntervalMs) {
         this.tickIntervalMs = tickIntervalMs;
         this.lastTickStart = null;
@@ -14,6 +15,7 @@ export default class ServerLagMonitor {
         this.previousEventLoopUtilization = performance.eventLoopUtilization();
     }
 
+    // Collect stage and counter samples, reporting when the current window expires.
     record(tickStart, stages, counters = {}) {
         const tickDuration = performance.now() - tickStart;
         const tickGap = this.lastTickStart === null ? this.tickIntervalMs : tickStart - this.lastTickStart;
@@ -25,6 +27,7 @@ export default class ServerLagMonitor {
         this.report(now);
     }
 
+    // Summarize tick latency, event-loop delay, work stages, and per-tick counters.
     report(now) {
         const samples = this.samples;
         if (!samples.length) return;

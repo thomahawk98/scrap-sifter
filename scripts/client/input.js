@@ -17,6 +17,7 @@ export const DEFAULT_MOUSE_BINDINGS = { shoot: 0, roll: 1, place: 2, inventoryCl
 const normalizeKey = key => key.toLowerCase();
 
 export default class InputController {
+    // Merge configurable bindings and attach browser input listeners once.
     constructor({
         canvas, player, camera, keyBindings = {}, mouseBindings = {},
         onClearChunks = () => {},
@@ -28,11 +29,14 @@ export default class InputController {
         this.canvas = canvas;
         this.player = player;
         this.camera = camera;
+
         this.onClearChunks = onClearChunks;
         this.changeRenderDistance = changeRenderDistance;
         this.clampRenderDistance = clampRenderDistance;
         this.inspectChunk = inspectChunk;
         this.inspectChunks = inspectChunks;
+
+        // controls
         const configuredBindings = { ...DEFAULT_KEY_BINDINGS, ...keyBindings };
         this.keyBindings = Object.fromEntries(Object.entries(configuredBindings).map(([action, binding]) => [
             action,
@@ -55,6 +59,7 @@ export default class InputController {
         this.bindEvents();
     }
 
+    // Register pointer, mouse, and keyboard events that feed the action state.
     bindEvents() {
         this.canvas.addEventListener('click', () => {
             if (this.player.menuOpen) return;
@@ -73,6 +78,7 @@ export default class InputController {
         document.addEventListener('mouseup', event => { this.mouse.buttons[event.button] = false; });
     }
 
+    // Rotate the view under pointer lock or update the inventory cursor otherwise.
     handleMouseMove(event) {
         if (document.pointerLockElement === this.canvas) {
             this.player.rotateView(event.movementX, event.movementY, this.isMouseDown('roll'));
@@ -82,11 +88,13 @@ export default class InputController {
         this.mouse.y = event.pageY;
     }
 
+    // Adjust third-person camera distance while preserving first-person behavior.
     handleWheel(event) {
         if (this.player.perspectiveMode === 0) return;
         this.camera.viewDistance = Math.clamp(this.camera.viewDistance + event.deltaY * 0.075, 3, 100);
     }
 
+    // Update held and pressed actions, then apply immediate menu/debug controls.
     handleKeyDown(event) {
         const key = normalizeKey(event.key);
         this.keys[key] = true;
@@ -121,6 +129,7 @@ export default class InputController {
         }
     }
 
+    // Clear held actions and press latches associated with the released key.
     handleKeyUp(event) {
         const key = normalizeKey(event.key);
         this.keys[key] = false;
@@ -129,6 +138,7 @@ export default class InputController {
         }
     }
 
+    // Toggle the inventory panel and pointer-lock state together.
     toggleMenu() {
         if (this.player.menuOpen) {
             this.player.closeMenu();
@@ -141,18 +151,22 @@ export default class InputController {
         document.exitPointerLock();
     }
 
+    // Check one physical key against a configured binding list.
     bindingMatches(binding, key) {
         return binding.some(candidate => candidate === key);
     }
 
+    // Read a held named action from its configured keyboard bindings.
     isDown(action) {
         return this.keyBindings[action].some(key => this.keys[key] === true);
     }
 
+    // Read a held named action from its configured mouse button.
     isMouseDown(action) {
         return this.mouse.buttons[this.mouseBindings[action]] === true;
     }
 
+    // Consume one mouse press so inventory clicks fire once per button-down.
     consumeMousePress(action) {
         const button = this.mouseBindings[action];
         if (!this.mouse.pressedButtons[button]) return false;
@@ -160,6 +174,7 @@ export default class InputController {
         return true;
     }
 
+    // Consume one key action edge and optionally clear its held-key state.
     consumePress(action, clearBoundKeys = true) {
         if (!this.pressedActions[action]) return false;
         this.pressedActions[action] = false;
@@ -168,8 +183,7 @@ export default class InputController {
         return true;
     }
 
-    // Ship named actions instead of physical key codes so server gameplay uses
-    // the player's configured bindings without importing browser input logic.
+    // send a snapshot of the actions, not the keybindings
     snapshot() {
         const actions = {};
         for (const action of Object.keys(this.keyBindings)) {
