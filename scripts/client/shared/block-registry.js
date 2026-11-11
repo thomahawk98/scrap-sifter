@@ -62,3 +62,12 @@ const BlockRegistry = {
         return null;
     },
 }
+
+// Stable numeric IDs are also used by the texture atlas and worker-built meshes.
+export function getBlockTypeIndex(type) {
+    return BlockRegistry.registry.indexOf(type);
+}
+
+export function getBlockTypeCount() {
+    return BlockRegistry.registry.length;
+}

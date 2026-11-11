@@ -28,6 +28,7 @@ export default class EntityRenderer {
         this.program = program;
         this.attributes = attributes;
         this.uniforms = uniforms;
+        this.textureAtlas = uniforms.textureAtlas;
         this.geometryBuffers = new Map();
     }
 
@@ -53,13 +54,14 @@ export default class EntityRenderer {
         const gl = this.gl;
         const buffers = this.getBuffers(entity.geometry);
         const modelView = multiplyMatrices(viewMatrix, getModelMatrix(entity));
-        const stride = 9 * 4; // position + normal + color; UVs can extend this layout later.
+        const stride = 13 * 4; // position + normal + color + UV + face texture index + shade.
 
         gl.useProgram(this.program);
         gl.uniformMatrix4fv(this.uniforms.projectionMatrix, false, projectionMatrix);
         gl.uniformMatrix4fv(this.uniforms.modelViewMatrix, false, modelView);
         gl.uniform1f(this.uniforms.chunkFade, 1);
         gl.uniform3fv(this.uniforms.materialColor, entity.material.color || [1, 1, 1]);
+        gl.uniform1f(this.uniforms.textureBase, this.textureAtlas.getEntityTextureBase(entity.type));
 
         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
         gl.vertexAttribPointer(this.attributes.position, 3, gl.FLOAT, false, stride, 0);
@@ -68,6 +70,12 @@ export default class EntityRenderer {
         gl.enableVertexAttribArray(this.attributes.normal);
         gl.vertexAttribPointer(this.attributes.color, 3, gl.FLOAT, false, stride, 6 * 4);
         gl.enableVertexAttribArray(this.attributes.color);
+        gl.vertexAttribPointer(this.attributes.textureUV, 2, gl.FLOAT, false, stride, 9 * 4);
+        gl.enableVertexAttribArray(this.attributes.textureUV);
+        gl.vertexAttribPointer(this.attributes.textureIndex, 1, gl.FLOAT, false, stride, 11 * 4);
+        gl.enableVertexAttribArray(this.attributes.textureIndex);
+        gl.vertexAttribPointer(this.attributes.shade, 1, gl.FLOAT, false, stride, 12 * 4);
+        gl.enableVertexAttribArray(this.attributes.shade);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indexBuffer);
         gl.drawElements(gl.TRIANGLES, buffers.indexCount, gl.UNSIGNED_INT, 0);
     }

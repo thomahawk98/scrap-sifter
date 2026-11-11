@@ -23,7 +23,11 @@ export default class User {
         this.playerId = null;
         this.player = this.world.createLocalPlayer();
         this.particles = new ParticleSystem();
-        this.inventoryView = new InventoryView(this.player, slot => socket.emit('inventory:click', slot));
+        this.inventoryView = new InventoryView(
+            this.player,
+            slot => socket.emit('inventory:click', slot),
+            renderer.textureAtlas,
+        );
         this.camera = new Camera(this.player, 90, 0.1, 200, { getViewBasis, reverseView });
         this.hud = new Hud(hudCanvas, { getViewBasis });
         this.audio = new AudioProcessor({
@@ -82,6 +86,7 @@ export default class User {
         this.socket.on('player:left', ({ id }) => this.world.removeEntity(id));
         this.socket.on('chunk:data', data => this.chunkManager.receive(data));
         this.socket.on('block:update', change => {
+            if (change.block?.type && change.block.type !== 'air') this.renderer.ensureBlockTexture(change.block.type);
             if (change.previousBlock && change.block?.type === 'air' && change.previousBlock.type !== 'air') {
                 const position = change.blockPos.map(value => value + 0.5);
                 this.particles.spawnBlockBreak(position, getBlockFaceColor(change.previousBlock.type));

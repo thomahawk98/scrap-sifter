@@ -7,9 +7,11 @@ const ITEM_ICON_FALLBACKS = {
 };
 
 export default class InventoryView {
-    constructor(player, onSlotClick = () => {}) {
+    constructor(player, onSlotClick = () => {}, textureAtlas = null) {
         this.player = player;
         this.onSlotClick = onSlotClick;
+        this.textureAtlas = textureAtlas;
+        this.textureImages = new Map();
         this.SLOT_SIZE = 70;
         this.SLOT_SPACING = 85;
         this.openAnimation = 0; //0 = closed, 100 = open
@@ -70,8 +72,17 @@ export default class InventoryView {
             scale: [1, 1, 1],
         };
 
+        const texture = icon.texture ?? {
+            category: item.kind === 'block' ? 'block' : 'entity',
+            name: item.type,
+        };
+        const texturesEnabled = texture.category === 'block'
+            ? this.textureAtlas?.blockTexturesEnabled
+            : this.textureAtlas?.entityTexturesEnabled;
+        const textureImage = texturesEnabled ? this.getTextureImage(texture.name, texture.category) : null;
+
         // Draw the model first so the label strip and text remain in front.
-        if (icon.shape === 'cube') this.drawIsometricCube(ctx, icon, x, y + 4);
+        if (icon.shape === 'cube') this.drawIsometricCube(ctx, icon, x, y + 4, textureImage);
 
         // Keep a readable label and count around the compact 3D model preview.
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
@@ -95,7 +106,20 @@ export default class InventoryView {
         ctx.fillText(item.amount, x + this.SLOT_SIZE * 0.4 - 5, y + this.SLOT_SIZE * 0.4);
     }
 
-    drawIsometricCube(ctx, icon, centerX, centerY) {
+    getTextureImage(name, category) {
+        const assetName = `${name}-${category}`;
+        if (this.textureImages.has(assetName)) return this.textureImages.get(assetName);
+        if (!this.textureAtlas) return null;
+
+        // Cache the pending request too, so the HUD only loads each item sheet once.
+        this.textureImages.set(assetName, null);
+        this.textureAtlas.getObjectImage(assetName).then(image => {
+            this.textureImages.set(assetName, image);
+        });
+        return null;
+    }
+
+    drawIsometricCube(ctx, icon, centerX, centerY, textureImage = null) {
         const scale = icon.scale ?? [1, 1, 1];
         // Map world units to pixels so relative projectile sizes stay visible.
         const unit = this.SLOT_SIZE * 0.75;
@@ -104,14 +128,40 @@ export default class InventoryView {
         const project = (x, y, z) => [centerX + x - z, centerY + (x + z) * 0.5 - y];
         const color = icon.color ?? [1, 1, 1];
 
-        const drawFace = (vertices, shade) => {
+        const drawFace = (vertices, shade, textureFace) => {
+            const projected = vertices.map(([px, py, pz]) => project(px, py, pz));
             ctx.beginPath();
-            vertices.forEach(([px, py, pz], index) => {
-                const [screenX, screenY] = project(px, py, pz);
+            projected.forEach(([screenX, screenY], index) => {
                 if (index === 0) ctx.moveTo(screenX, screenY);
                 else ctx.lineTo(screenX, screenY);
             });
             ctx.closePath();
+
+            if (textureImage && textureImage.width % 3 === 0 && textureImage.height % 2 === 0) {
+                const sourceSize = textureImage.width / 3;
+                if (sourceSize === textureImage.height / 2) {
+                    const cells = [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]];
+                    const [column, row] = cells[textureFace];
+                    const p0 = projected[0], p1 = projected[1], p3 = projected[3];
+                    const sourceX = column * sourceSize, sourceY = row * sourceSize;
+                    ctx.save();
+                    ctx.clip();
+                    ctx.imageSmoothingEnabled = this.textureAtlas.smoothingEnabled;
+                    // Map the same face UVs as the 3D mesh; the vertical flip
+                    // accounts for WebGL UVs having their origin at bottom-left.
+                    ctx.transform(
+                        p1[0] - p0[0], p1[1] - p0[1],
+                        p3[0] - p0[0], p3[1] - p0[1],
+                        p0[0], p0[1],
+                    );
+                    ctx.translate(0, 1);
+                    ctx.scale(1, -1);
+                    ctx.drawImage(textureImage, sourceX, sourceY, sourceSize, sourceSize, 0, 0, 1, 1);
+                    ctx.restore();
+                    return;
+                }
+            }
+
             ctx.fillStyle = shadeColor(color, shade);
             ctx.fill();
         };
@@ -119,13 +169,13 @@ export default class InventoryView {
         // Draw the two visible sides first, then the top face for clean edges.
         drawFace([
             [-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz],
-        ], 0.62);
+        ], 0.62, 0);
         drawFace([
-            [hx, -hy, -hz], [hx, -hy, hz], [hx, hy, hz], [hx, hy, -hz],
-        ], 0.8);
+            [hx, -hy, hz], [hx, -hy, -hz], [hx, hy, -hz], [hx, hy, hz],
+        ], 0.8, 4);
         drawFace([
-            [-hx, hy, -hz], [hx, hy, -hz], [hx, hy, hz], [-hx, hy, hz],
-        ], 1.15);
+            [-hx, hy, hz], [hx, hy, hz], [hx, hy, -hz], [-hx, hy, -hz],
+        ], 1.15, 2);
     }
 
     update(canvas, deltaScale = 1) {

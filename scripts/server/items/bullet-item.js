@@ -8,7 +8,10 @@ export default class BulletItem extends Item {
             amount: 64,
             maxStack: 64,
             cooldown: 8,
-            icon: { shape: 'cube', color: [0, 0, 0], scale: [0.25, 0.25, 0.25] },
+            icon: {
+                shape: 'cube', color: [0, 0, 0], scale: [0.25, 0.25, 0.25],
+                texture: { category: 'entity', name: 'bullet' },
+            },
             ...options,
         });
     }

@@ -2,6 +2,7 @@
 import * as shaders from './shaders.js';
 import EntityRenderer from './entity-renderer.js';
 import ParticleRenderer from './particle-renderer.js';
+import TextureAtlas from './texture-atlas.js';
 
 function getOutlineVertices(x, y, z) {
     const corners = [
@@ -39,6 +40,7 @@ export default class Renderer {
         // Chunk buffers are renderer-owned and keyed by chunk coordinates.
         this.outlineBuffer = this.gl.createBuffer();
         this.chunkBuffers = new Map();
+        this.textureAtlas = new TextureAtlas(this.gl);
         this.init();
         this.resize();
     }
@@ -61,11 +63,19 @@ export default class Renderer {
             position: gl.getAttribLocation(this.worldProgram, 'position'),
             normal: gl.getAttribLocation(this.worldProgram, 'normal'),
             color: gl.getAttribLocation(this.worldProgram, 'color'),
+            textureUV: gl.getAttribLocation(this.worldProgram, 'textureUV'),
+            textureIndex: gl.getAttribLocation(this.worldProgram, 'textureIndex'),
+            shade: gl.getAttribLocation(this.worldProgram, 'shade'),
         };
         this.worldUniforms = {
             modelViewMatrix: gl.getUniformLocation(this.worldProgram, 'modelViewMatrix'),
             projectionMatrix: gl.getUniformLocation(this.worldProgram, 'projectionMatrix'),
             materialColor: gl.getUniformLocation(this.worldProgram, 'uMaterialColor'),
+            textureSampler: gl.getUniformLocation(this.worldProgram, 'uTextureAtlas'),
+            textureGrid: gl.getUniformLocation(this.worldProgram, 'uTextureGrid'),
+            texturesEnabled: gl.getUniformLocation(this.worldProgram, 'uTexturesEnabled'),
+            textureTileSize: gl.getUniformLocation(this.worldProgram, 'uTextureTileSize'),
+            textureBase: gl.getUniformLocation(this.worldProgram, 'uTextureBase'),
 
             uChunkFade: gl.getUniformLocation(this.worldProgram, 'uChunkFade'),
 
@@ -87,6 +97,9 @@ export default class Renderer {
                 projectionMatrix: this.worldUniforms.projectionMatrix,
                 chunkFade: this.worldUniforms.uChunkFade,
                 materialColor: this.worldUniforms.materialColor,
+                textureBase: this.worldUniforms.textureBase,
+                texturesEnabled: this.worldUniforms.texturesEnabled,
+                textureAtlas: this.textureAtlas,
             },
         );
         this.particleRenderer = new ParticleRenderer(gl);
@@ -217,6 +230,11 @@ export default class Renderer {
         //set up view matrices
         const [proj, view] = this.setUpViewMatrices(camera);
 
+        this.textureAtlas.bind();
+        gl.uniform1i(this.worldUniforms.textureSampler, 0);
+        gl.uniform2f(this.worldUniforms.textureGrid, this.textureAtlas.atlasColumns, this.textureAtlas.atlasRows);
+        gl.uniform1f(this.worldUniforms.textureTileSize, 32);
+
         // sky
         gl.uniform1f(this.worldUniforms.uDaylight, world.daylight);
         gl.uniform3f(this.worldUniforms.uSkyColor, ...skyColor);
@@ -229,11 +247,13 @@ export default class Renderer {
         gl.uniform1f(this.worldUniforms.uFogFadeEnd, fogFadeEnd);
 
         //render chunks
+        gl.uniform1f(this.worldUniforms.texturesEnabled, this.textureAtlas.blockTexturesEnabled ? 1 : 0);
         for (const chunk of world.chunks.values()) {
             if (chunk.residency === 'active') this.renderChunk(chunk);
         }
 
         //render entities
+        gl.uniform1f(this.worldUniforms.texturesEnabled, this.textureAtlas.entityTexturesEnabled ? 1 : 0);
         for (const entity of world.entities.values()) {
             if (entity.visible && entity.geometry) this.entityRenderer.render(entity, view, proj);
         }
@@ -266,12 +286,13 @@ export default class Renderer {
         if (!buffers) return false;
 
         const gl = this.gl;
-        const STRIDE = 9 * 4; // 3 pos + 3 normal + 3 color
+        const STRIDE = 13 * 4; // position + normal + color + UV + atlas tile index + AO shade
 
         //set chunk fade
         const fadePercent = chunk.fade / chunk.maxFade;
         gl.uniform1f(this.worldUniforms.uChunkFade, fadePercent);
         gl.uniform3f(this.worldUniforms.materialColor, 1, 1, 1);
+        gl.uniform1f(this.worldUniforms.textureBase, 0);
 
         //bind the buffer
         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
@@ -287,6 +308,13 @@ export default class Renderer {
         // Color
         gl.vertexAttribPointer(this.worldAttribs.color, 3, gl.FLOAT, false, STRIDE, 6 * 4);
         gl.enableVertexAttribArray(this.worldAttribs.color);
+
+        gl.vertexAttribPointer(this.worldAttribs.textureUV, 2, gl.FLOAT, false, STRIDE, 9 * 4);
+        gl.enableVertexAttribArray(this.worldAttribs.textureUV);
+        gl.vertexAttribPointer(this.worldAttribs.textureIndex, 1, gl.FLOAT, false, STRIDE, 11 * 4);
+        gl.enableVertexAttribArray(this.worldAttribs.textureIndex);
+        gl.vertexAttribPointer(this.worldAttribs.shade, 1, gl.FLOAT, false, STRIDE, 12 * 4);
+        gl.enableVertexAttribArray(this.worldAttribs.shade);
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indexBuffer);
         gl.drawElements(
@@ -316,5 +344,28 @@ export default class Renderer {
 
         // Restore the world shader; the next chunk draw binds its own buffers.
         gl.useProgram(this.worldProgram);
+    }
+
+    setTexturesEnabled(enabled) {
+        this.setBlockTexturesEnabled(enabled);
+        this.setEntityTexturesEnabled(enabled);
+    }
+
+    setBlockTexturesEnabled(enabled) {
+        this.textureAtlas.blockTexturesEnabled = Boolean(enabled);
+    }
+
+    setEntityTexturesEnabled(enabled) {
+        this.textureAtlas.entityTexturesEnabled = Boolean(enabled);
+    }
+
+    // Nearest filtering keeps pixel art crisp by default; callers can opt into
+    // linear filtering when they want softened texture edges.
+    setTextureSmoothingEnabled(enabled) {
+        this.textureAtlas.setSmoothingEnabled(enabled);
+    }
+
+    ensureBlockTexture(type) {
+        this.textureAtlas.ensureBlockTexture(type);
     }
 }

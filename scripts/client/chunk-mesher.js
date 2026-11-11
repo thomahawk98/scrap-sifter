@@ -1,4 +1,4 @@
-import { getBlockTypeFromId } from './shared/block-registry.js';
+import { getBlockTypeFromId, getBlockTypeIndex } from './shared/block-registry.js';
 import { getFaceDirs } from './shared/geometry.js';
 import { getBlockFaceColor } from './shared/block-stats.js';
 
@@ -7,6 +7,7 @@ const PADDED_SIZE = CHUNK_SIZE + 2;
 const PADDED_PLANE = PADDED_SIZE * PADDED_SIZE;
 const PADDED_VOLUME = PADDED_PLANE * PADDED_SIZE;
 const UNKNOWN_VOXEL = 2;
+const FACE_UVS = [[0, 0], [1, 0], [1, 1], [0, 1]];
 
 // Convert small AO coordinate triples to flat offsets once instead of
 // allocating and destructuring them for every visible vertex.
@@ -68,7 +69,7 @@ export default class ChunkMesher {
             faceMasks[i] = mask;
         }
 
-        const vertices = new Float32Array(faceCount * 4 * 9);
+        const vertices = new Float32Array(faceCount * 4 * 13);
         const indices = new Uint32Array(faceCount * 6);
         const colorCache = new Map();
         let vertexCursor = 0, indexCursor = 0, vertexOffset = 0;
@@ -80,17 +81,20 @@ export default class ChunkMesher {
             const paddedIndex = (x + 1) + (y + 1) * PADDED_SIZE + (z + 1) * PADDED_PLANE;
             const wx = baseX + x, wy = baseY + y, wz = baseZ + z;
             const blockId = blocks[i];
-            let colors = colorCache.get(blockId);
-            if (!colors) {
+            let material = colorCache.get(blockId);
+            if (!material) {
                 const type = getBlockTypeFromId(blockId);
-                colors = FACES.map(face => getBlockFaceColor(type, face.normal));
-                colorCache.set(blockId, colors);
+                material = {
+                    colors: FACES.map(face => getBlockFaceColor(type, face.normal)),
+                    textureBase: getBlockTypeIndex(type) * 6,
+                };
+                colorCache.set(blockId, material);
             }
 
             for (let faceIndex = 0; faceIndex < FACES.length; faceIndex++) {
                 if (!(mask & (1 << faceIndex))) continue;
                 const face = FACES[faceIndex];
-                const color = colors[faceIndex];
+                const color = material.colors[faceIndex];
                 for (let v = 0; v < 4; v++) {
                     const [vx, vy, vz] = face.verts[v];
                     const ao = face.aoOffsets[v];
@@ -104,9 +108,13 @@ export default class ChunkMesher {
                     vertices[vertexCursor++] = face.normal[0];
                     vertices[vertexCursor++] = face.normal[1];
                     vertices[vertexCursor++] = face.normal[2];
-                    vertices[vertexCursor++] = color[0] * shade;
-                    vertices[vertexCursor++] = color[1] * shade;
-                    vertices[vertexCursor++] = color[2] * shade;
+                    vertices[vertexCursor++] = color[0];
+                    vertices[vertexCursor++] = color[1];
+                    vertices[vertexCursor++] = color[2];
+                    vertices[vertexCursor++] = FACE_UVS[v][0];
+                    vertices[vertexCursor++] = FACE_UVS[v][1];
+                    vertices[vertexCursor++] = material.textureBase + faceIndex;
+                    vertices[vertexCursor++] = shade;
                 }
                 indices[indexCursor++] = vertexOffset;
                 indices[indexCursor++] = vertexOffset + 1;

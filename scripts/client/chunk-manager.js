@@ -1,4 +1,5 @@
 import ChunkMesher from './chunk-mesher.js';
+import { getBlockTypeFromId } from './shared/block-registry.js';
 
 const CHUNK_SIZE = 16;
 const UNKNOWN_VOXEL = 2;
@@ -41,6 +42,11 @@ export default class ClientChunkManager {
         // Socket.IO may reconstruct a typed-array attachment as an ArrayBuffer
         // or byte view. Restore the registry's 16-bit voxel IDs before meshing.
         data.voxels = normalizeVoxelData(data.voxels);
+        const chunkBlockTypes = new Set();
+        for (const blockId of data.voxels) {
+            if (blockId !== 0) chunkBlockTypes.add(getBlockTypeFromId(blockId));
+        }
+        for (const type of chunkBlockTypes) this.renderer.ensureBlockTexture(type);
         this.world.receiveChunk(data);
         const chunk = this.world.getChunk(...data.chunkPos);
         if (chunk.empty) {
