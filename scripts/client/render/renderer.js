@@ -33,7 +33,7 @@ function getOutlineVertices(x, y, z) {
 }
 
 export default class Renderer {
-    constructor(canvas) {
+    constructor(canvas, assetLoader = null) {
         this.canvas = canvas;
         this.gl = canvas.getContext('webgl');
         if (!this.gl) throw new Error("WebGL not supported!");
@@ -41,7 +41,7 @@ export default class Renderer {
         // Chunk buffers are renderer-owned and keyed by chunk coordinates.
         this.outlineBuffer = this.gl.createBuffer();
         this.chunkBuffers = new Map();
-        this.textureAtlas = new TextureAtlas(this.gl);
+        this.textureAtlas = new TextureAtlas(this.gl, assetLoader);
         this.init();
         this.nametagRenderer = new NametagRenderer(this.gl);
         this.resize();

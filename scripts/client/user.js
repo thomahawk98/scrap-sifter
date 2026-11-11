@@ -16,7 +16,7 @@ const ENTITY_POSITION_INTERPOLATION = 0.15;
 // A User owns one local view and its socket connection; authoritative gameplay
 // and shared world mutations are received from the server as snapshots/events.
 export default class User {
-    constructor({ socket, renderer, glCanvas, hudCanvas, keyBindings = {}, mouseBindings = {} }) {
+    constructor({ socket, renderer, glCanvas, hudCanvas, assetLoader = null, keyBindings = {}, mouseBindings = {} }) {
         this.socket = socket;
         this.renderer = renderer;
         this.world = new ClientWorld();
@@ -32,6 +32,7 @@ export default class User {
         this.hud = new Hud(hudCanvas, { getViewBasis });
         this.audio = new AudioProcessor({
             world: this.world,
+            assetLoader,
             getListener: () => ({
                 position: this.player.head?.pos ?? this.player.pos,
                 right: getViewBasis(this.player.orientation).right,

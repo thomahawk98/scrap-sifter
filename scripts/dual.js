@@ -1,4 +1,5 @@
 import FPSTracker from './client/systems/fps-tracker.js';
+import AssetLoader from './client/asset-loader.js';
 import Game from './game.js';
 import './client/shared/math-patch.js';
 
@@ -27,7 +28,17 @@ class DualUpdateLoop {
     }
 }
 
+// Load and decode everything advertised by the server before opening a socket;
+// this prevents the player's first world entry from waiting on asset I/O.
+const assetLoader = new AssetLoader(document.getElementById('hudcanvas'));
+try {
+    await assetLoader.load();
+} catch (error) {
+    assetLoader.drawFailure(error.message);
+    throw error;
+}
+
 // Temporary in-process driver: this coordinates client presentation and server
 // simulation until each side owns its own update transport and scheduler.
-const game = new Game();
+const game = new Game({ assetLoader });
 new DualUpdateLoop(game).start();

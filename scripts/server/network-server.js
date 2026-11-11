@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
+import { readdir } from 'node:fs/promises';
 import ServerRuntime from './runtime.js';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -13,6 +14,15 @@ const SNAPSHOT_INTERVAL = 3;
 // Serve the browser game and its Socket.IO transport from one LAN origin.
 export function createNetworkServer({ port = Number(process.env.PORT) || 3000, host = process.env.HOST || '0.0.0.0' } = {}) {
     const app = express();
+    app.get('/asset-manifest', async (_request, response) => {
+        try {
+            response.set('Cache-Control', 'no-store');
+            response.json(await buildAssetManifest());
+        } catch (error) {
+            console.error('Could not build the asset manifest:', error);
+            response.status(500).json({ error: 'Could not load game assets.' });
+        }
+    });
     app.use(express.static(projectRoot));
     const httpServer = createServer(app);
     const io = new Server(httpServer, { maxHttpBufferSize: 5e6 });
@@ -150,6 +160,38 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
         }
     });
     return { app, httpServer, io, runtime };
+}
+
+async function buildAssetManifest() {
+    const assetsRoot = path.join(projectRoot, 'scripts', 'client', 'assets');
+    const manifest = { images: [], audios: [], fonts: [] };
+    const categories = [
+        { key: 'images', extensions: new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']) },
+        { key: 'audios', extensions: new Set(['.ogg', '.mp3', '.wav', '.webm', '.m4a']) },
+        { key: 'fonts', extensions: new Set(['.ttf', '.otf', '.woff', '.woff2']) },
+    ];
+
+    async function visit(directory) {
+        for (const entry of await readdir(directory, { withFileTypes: true })) {
+            const fullPath = path.join(directory, entry.name);
+            if (entry.isDirectory()) {
+                await visit(fullPath);
+                continue;
+            }
+            if (!entry.isFile()) continue;
+
+            const extension = path.extname(entry.name).toLowerCase();
+            const category = categories.find(candidate => candidate.extensions.has(extension));
+            if (!category) continue;
+            const relativePath = path.relative(projectRoot, fullPath);
+            const url = `/${relativePath.split(path.sep).map(encodeURIComponent).join('/')}`;
+            manifest[category.key].push({ name: entry.name, url });
+        }
+    }
+
+    await visit(assetsRoot);
+    for (const assets of Object.values(manifest)) assets.sort((a, b) => a.name.localeCompare(b.name));
+    return manifest;
 }
 
 function dispatchAudioEvents(events, runtime, connectedPlayers, io) {

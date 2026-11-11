@@ -11,8 +11,9 @@ const FACE_CELLS = [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]];
 
 // One shared texture keeps all block and entity draws on the same WebGL binding.
 export default class TextureAtlas {
-    constructor(gl) {
+    constructor(gl, assetLoader = null) {
         this.gl = gl;
+        this.assetLoader = assetLoader;
         this.blockSlotCount = getBlockTypeCount();
         this.entitySlots = new Map();
         this.imagePromises = new Map();
@@ -106,6 +107,7 @@ export default class TextureAtlas {
     }
 
     async fetchImage(assetName) {
+        if (this.assetLoader) return this.assetLoader.getImage(`${assetName}.png`);
         try {
             const response = await fetch(`${ASSET_ROOT}${encodeURIComponent(`${assetName}.png`)}`);
             if (!response.ok) return null;

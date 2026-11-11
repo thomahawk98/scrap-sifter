@@ -32,8 +32,6 @@ make assets load beforehand to prevent them needing to buffer first
 edit bomb launching audio
 add click to enable audio screen
 
-entity outline?
-name tags
 fix audio processor delay
 make certain audios fade more with distance
 pitch up / down audio for variation

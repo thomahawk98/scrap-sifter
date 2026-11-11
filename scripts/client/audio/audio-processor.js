@@ -13,11 +13,12 @@ const MAX_AUDIO_EVENT_AGE_MS = 2000;
 // All sound sources, including local UI sounds and server events, pass through
 // this processor so listener-specific effects stay entirely client-side.
 export default class AudioProcessor {
-    constructor({ world, getListener, assetRoot = AUDIO_ASSET_ROOT } = {}) {
+    constructor({ world, getListener, assetRoot = AUDIO_ASSET_ROOT, assetLoader = null } = {}) {
         this.world = world;
         this.getListener = getListener ?? (() => null);
         this.assetRoot = assetRoot.endsWith('/') ? assetRoot : `${assetRoot}/`;
-        this.context = null;
+        this.assetLoader = assetLoader;
+        this.context = assetLoader?.audioContext ?? null;
         this.buffers = new Map();
         this.warnedNames = new Set();
     }
@@ -94,6 +95,11 @@ export default class AudioProcessor {
 
     async getBuffer(audioType) {
         if (this.buffers.has(audioType)) return this.buffers.get(audioType);
+        const preloaded = this.assetLoader?.getAudio(audioType);
+        if (preloaded) {
+            this.buffers.set(audioType, preloaded);
+            return preloaded;
+        }
 
         const isBlockBreakSound = audioType.endsWith('-broken') && audioType !== 'block-broken.mp3';
         const loading = this.loadBuffer(audioType, !isBlockBreakSound).then(buffer => {

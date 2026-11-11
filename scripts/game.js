@@ -4,7 +4,7 @@ import Renderer from './client/render/renderer.js';
 // Browser composition contains presentation and transport only. ServerRuntime
 // runs in the Node process and is never instantiated in the client.
 export default class Game {
-    constructor({ keyBindings = {}, mouseBindings = {} } = {}) {
+    constructor({ assetLoader = null, keyBindings = {}, mouseBindings = {} } = {}) {
         this.glCanvas = document.getElementById('glcanvas');
         this.hudCanvas = document.getElementById('hudcanvas');
 
@@ -21,11 +21,12 @@ export default class Game {
 
         // Compose the browser-side transport and presentation components.
         this.socket = window.io();
-        this.renderer = new Renderer(this.glCanvas);
+        this.renderer = new Renderer(this.glCanvas, assetLoader);
         this.renderer.resize();
         this.user = new User({
             socket: this.socket, renderer: this.renderer,
             glCanvas: this.glCanvas, hudCanvas: this.hudCanvas,
+            assetLoader,
             keyBindings, mouseBindings,
         });
         this.users = [this.user];
