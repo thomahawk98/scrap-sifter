@@ -20,7 +20,7 @@ export default class User {
         this.world = new ClientWorld();
         this.playerId = null;
         this.player = this.world.createLocalPlayer();
-        this.inventoryView = new InventoryView(this.player);
+        this.inventoryView = new InventoryView(this.player, slot => socket.emit('inventory:click', slot));
         this.camera = new Camera(this.player, 90, 0.1, 200, { getViewBasis, reverseView });
         this.hud = new Hud(hudCanvas, { getViewBasis });
         this.audio = new AudioProcessor({

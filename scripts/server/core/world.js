@@ -136,8 +136,7 @@ export default class World {
         //add block to player inventory
         const dropType = getBlockDropType(block.type);
         const item = { type: dropType, amount: 1 };
-        player.inventory.items.push(item);
-        player.inventory.moveToBestIndex(item);
+        player.inventory.addItem(item);
 
         return true;
     }
@@ -145,7 +144,7 @@ export default class World {
 
     placeBlock(hit, player) {
         const item = player.inventory.getSelectedItem();
-        if (!item || item.amount <= 0) return false;
+        if (!item || item.kind === 'usable' || item.amount <= 0) return false;
 
         //find where the new block will go
         const [x, y, z] = hit.position;

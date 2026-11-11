@@ -20,7 +20,7 @@ export default class Entity {
         this.health = this.maxHealth;
         // Tune these per entity type to control which impacts cause damage.
         this.impactDamageThreshold = 0.15;
-        this.impactDamageMultiplier = 150;
+        this.impactDamageMultiplier = 75;
     }
 
     // Shared acceleration, velocity integration, collision, and damping path.

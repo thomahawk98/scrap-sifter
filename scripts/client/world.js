@@ -87,7 +87,14 @@ export default class ClientWorld {
             const localOrientation = entity.orientation;
             const currentPosition = entity.pos;
             const hasServerPosition = entity.hasServerPosition;
+            // Menu state is changed immediately by local input. Older network
+            // snapshots must not undo a just-pressed open/close toggle or
+            // restore an older hotbar selection over the current client choice.
+            const localMenuOpen = entity.menuOpen;
+            const localInventoryOpen = entity.inventory?.open;
+            const localSelectedSlot = entity.inventory?.selectedSlot;
             Object.assign(entity, data);
+            entity.menuOpen = localMenuOpen ?? data.menuOpen ?? false;
             entity.orientation = localOrientation;
             entity.targetPos = [...data.pos];
             entity.pos = hasServerPosition ? currentPosition : [...data.pos];
@@ -95,6 +102,8 @@ export default class ClientWorld {
             // Snapshots contain plain data, so merge them into the client model
             // instead of replacing methods used by InventoryView.
             entity.inventory = Object.assign(createInventory(), entity.inventory ?? {}, inventoryData);
+            entity.inventory.open = localInventoryOpen ?? inventoryData.open ?? false;
+            entity.inventory.selectedSlot = localSelectedSlot ?? inventoryData.selectedSlot ?? 0;
             entity.head = entity.head ?? { pos: entity.pos };
             entity.head.pos = entity.pos;
             entity.inputs = entity.inputs ?? { keys: {}, mouse: { buttons: [], inBox: () => false } };
@@ -111,7 +120,7 @@ export default class ClientWorld {
 
 function createInventory() {
     return {
-        items: [], selectedSlot: 0, WIDTH: 8, HEIGHT: 4, open: false,
+        items: [], cursorItem: null, selectedSlot: 0, WIDTH: 8, HEIGHT: 4, open: false,
         cleanupDeletedItems() { this.items = this.items.filter(item => !item.delete && item.amount > 0); },
         swapItemsBySlot(a, b) {
             const first = this.items.find(item => item.slot === a);

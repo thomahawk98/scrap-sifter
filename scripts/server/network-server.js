@@ -61,6 +61,11 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
             runtime.setPlayerInput(player.id, createServerInput(input));
         });
 
+        socket.on('inventory:click', slot => {
+            const controlledPlayer = runtime.getPlayer(player.id);
+            controlledPlayer?.inventory.clickSlot(slot);
+        });
+
         socket.on('chunks:request', positions => {
             if (!Array.isArray(positions)) return;
             const playerNow = runtime.getPlayer(player.id);
@@ -176,9 +181,9 @@ function serializeEntity(entity) {
         outlinedBlock: entity.outlinedBlock,
         perspectiveMode: entity.perspectiveMode, head: entity.head,
         inventory: entity.inventory ? {
-            items: entity.inventory.items, selectedSlot: entity.inventory.selectedSlot,
+            items: entity.inventory.items.map(item => item?.toJSON?.() ?? item),
+            cursorItem: entity.inventory.cursorItem?.toJSON?.() ?? entity.inventory.cursorItem ?? null,
             WIDTH: entity.inventory.WIDTH, HEIGHT: entity.inventory.HEIGHT,
-            open: entity.inventory.open,
         } : undefined,
     };
 }

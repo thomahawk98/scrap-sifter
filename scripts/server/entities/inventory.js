@@ -1,5 +1,8 @@
 // Server-owned item stacks and slot operations. Screen layout and pointer
 // handling live in the client InventoryView, which operates on this data.
+import BulletItem from '../items/bullet-item.js';
+import BombItem from '../items/bomb-item.js';
+
 export default class Inventory {
     constructor(presetName = null) {
         this.items = presetName ? this.getPreset(presetName) : [];
@@ -7,15 +10,28 @@ export default class Inventory {
         this.WIDTH = 8;
         this.HEIGHT = 4;
         this.open = false;
+        this.cursorItem = null;
     }
 
     getSelectedItem() {
-        return this.items.find(item => item.slot == this.selectedSlot);
+        return this.items.find(item => item.slot == this.selectedSlot && !item.delete && item.amount > 0);
+    }
+
+    useSelectedItem(user, world) {
+        const item = this.getSelectedItem();
+        if (!item || typeof item.use !== 'function' || !item.use(user, world)) return null;
+
+        item.amount--;
+        if (item.amount <= 0) item.delete = true;
+        return item;
     }
 
     getPreset(preset) {
         switch (preset) {
-            case 'default': return [];
+            case 'default': return [
+                new BulletItem({ amount: 64, slot: 0 }),
+                new BombItem({ amount: 16, slot: 1 }),
+            ];
             default:
                 console.log('unrecognized preset: ', preset);
                 return [];
@@ -26,45 +42,22 @@ export default class Inventory {
         this.items = this.items.filter(item => !item.delete && item.amount > 0);
     }
 
-    moveToBestIndex(item, combiningAllowed = true) {
-        if (!this.items.includes(item)) {
-            console.log('item is not in inventory, could not complete "Move to best index"', item);
-            return false;
+    // Add a world drop to a compatible stack, then the first open slot.
+    addItem(item) {
+        if (!item || item.amount <= 0) return false;
+        item.maxStack ??= 64;
+        for (const stack of this.items) {
+            if (!this.canBeCombined(stack, item)) continue;
+            this.combineItems(stack, item);
+            if (item.amount <= 0) return true;
         }
 
-        if (combiningAllowed) {
-            const combinableItems = this.items.filter(candidate => this.canBeCombined(candidate, item));
-            if (combinableItems.length > 0) {
-                const itemsNotInTheSameRow = combinableItems.filter(candidate =>
-                    Math.floor(candidate.slot / this.WIDTH) !== Math.floor(item.slot / this.WIDTH)
-                );
-                const items = itemsNotInTheSameRow.length > 0 && item.slot != null
-                    ? itemsNotInTheSameRow
-                    : combinableItems;
-                items.sort((a, b) => a.slot - b.slot);
-                const combinedFully = this.combineItems(items[0], item);
-                if (!combinedFully) this.moveToBestIndex(item, false);
-            }
-        }
-
-        const emptySlotIndexes = [];
-        for (let slot = 0; slot < this.WIDTH * this.HEIGHT; slot++) {
-            const occupied = this.items.find(candidate => candidate.slot == slot && !candidate.delete);
-            if (!occupied) emptySlotIndexes.push(slot);
-        }
-
-        if (emptySlotIndexes.length === 0) {
-            item.delete = true;
-            return false;
-        }
-
-        const slotsNotInTheSameRow = emptySlotIndexes.filter(slot =>
-            Math.floor(slot / this.WIDTH) !== Math.floor(item.slot / this.WIDTH)
-        );
-        const indexes = slotsNotInTheSameRow.length > 0 && item.slot != null
-            ? slotsNotInTheSameRow
-            : emptySlotIndexes;
-        item.slot = indexes[0];
+        const occupiedSlots = new Set(this.items.filter(stack => !stack.delete).map(stack => stack.slot));
+        const freeSlot = Array.from({ length: this.WIDTH * this.HEIGHT }, (_, slot) => slot)
+            .find(slot => !occupiedSlots.has(slot));
+        if (freeSlot === undefined) return false;
+        item.slot = freeSlot;
+        this.items.push(item);
         return true;
     }
 
@@ -99,5 +92,41 @@ export default class Inventory {
 
         if (item1) item1.slot = slot2;
         if (item2) item2.slot = slot1;
+    }
+
+    // A click picks up a stack, places it, merges compatible stacks, or swaps.
+    clickSlot(slot) {
+        if (!Number.isInteger(slot) || slot < 0 || slot >= this.WIDTH * this.HEIGHT) return false;
+        this.cleanupDeletedItems();
+        const slotIndex = this.items.findIndex(item => item.slot === slot && !item.delete);
+        const slotItem = slotIndex === -1 ? null : this.items[slotIndex];
+
+        if (!this.cursorItem) {
+            if (!slotItem) return false;
+            this.items.splice(slotIndex, 1);
+            this.cursorItem = slotItem;
+            this.cursorItem.slot = null;
+            return true;
+        }
+
+        if (!slotItem) {
+            this.cursorItem.slot = slot;
+            this.items.push(this.cursorItem);
+            this.cursorItem = null;
+            return true;
+        }
+
+        if (this.canBeCombined(slotItem, this.cursorItem)) {
+            const fullyCombined = this.combineItems(slotItem, this.cursorItem);
+            if (fullyCombined) this.cursorItem = null;
+            return true;
+        }
+
+        const heldItem = this.cursorItem;
+        heldItem.slot = slot;
+        this.items[slotIndex] = heldItem;
+        slotItem.slot = null;
+        this.cursorItem = slotItem;
+        return true;
     }
 }

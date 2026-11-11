@@ -1,10 +1,19 @@
 import { getBlockFaceColor } from '../shared/block-stats.js';
+
+// Keep a visual fallback for usable items if a server snapshot omits icon data.
+const ITEM_ICON_FALLBACKS = {
+    bullet: { shape: 'cube', color: [0, 0, 0], scale: [0.25, 0.25, 0.25] },
+    bomb: { shape: 'cube', color: [1, 0.35, 0], scale: [0.35, 0.35, 0.35] },
+};
+
 export default class InventoryView {
-    constructor(player) {
+    constructor(player, onSlotClick = () => {}) {
         this.player = player;
+        this.onSlotClick = onSlotClick;
         this.SLOT_SIZE = 70;
         this.SLOT_SPACING = 85;
         this.openAnimation = 0; //0 = closed, 100 = open
+        this.wasInventoryClick = false;
     }
 
     get inventory() { return this.player.inventory; }
@@ -29,10 +38,15 @@ export default class InventoryView {
 
             //draw item
             const item = this.items.find(a => a.slot == i && !a.delete);
-            if (!item) continue;
-            this.drawItem(ctx, item, x, y);
+            if (item) this.drawItem(ctx, item, x, y);
 
             ctx.globalAlpha = 1;
+        }
+
+        // Show the server-owned cursor stack following the pointer while open.
+        if (this.open && this.inventory.cursorItem) {
+            const { x, y } = this.player.inputs.mouse;
+            this.drawItem(ctx, this.inventory.cursorItem, x, y);
         }
 
     }
@@ -50,11 +64,16 @@ export default class InventoryView {
     }
 
     drawItem(ctx, item, x, y) {
-        // draw item icon
-        var rgbs = getBlockFaceColor(item.type, [0, 1, 0]);
-        ctx.fillStyle = `rgb(${rgbs[0] * 255}, ${rgbs[1] * 255}, ${rgbs[2] * 255})`;
-        ctx.fillRect(x - this.SLOT_SIZE * 0.4, y - this.SLOT_SIZE * 0.4, this.SLOT_SIZE * 0.8, this.SLOT_SIZE * 0.8);
+        const icon = item.icon ?? ITEM_ICON_FALLBACKS[item.type] ?? {
+            shape: 'cube',
+            color: getBlockFaceColor(item.type, [0, 1, 0]),
+            scale: [1, 1, 1],
+        };
 
+        // Draw the model first so the label strip and text remain in front.
+        if (icon.shape === 'cube') this.drawIsometricCube(ctx, icon, x, y + 4);
+
+        // Keep a readable label and count around the compact 3D model preview.
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
         ctx.beginPath();
         ctx.roundRect(x - this.SLOT_SIZE * 0.5, y - this.SLOT_SIZE * 0.5, this.SLOT_SIZE, 30, 10);
@@ -67,7 +86,7 @@ export default class InventoryView {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.font = "bold 16px Tahoma";
-        ctx.fillText(`${item.type}`, x, y - this.SLOT_SIZE * 0.4 + 10);
+        ctx.fillText(item.name ?? item.type, x, y - this.SLOT_SIZE * 0.4 + 10);
 
         //draw item amount
         ctx.textAlign = 'right';
@@ -76,34 +95,48 @@ export default class InventoryView {
         ctx.fillText(item.amount, x + this.SLOT_SIZE * 0.4 - 5, y + this.SLOT_SIZE * 0.4);
     }
 
+    drawIsometricCube(ctx, icon, centerX, centerY) {
+        const scale = icon.scale ?? [1, 1, 1];
+        // Map world units to pixels so relative projectile sizes stay visible.
+        const unit = this.SLOT_SIZE * 0.75;
+        const half = scale.map(value => value * unit * 0.5);
+        const [hx, hy, hz] = half;
+        const project = (x, y, z) => [centerX + x - z, centerY + (x + z) * 0.5 - y];
+        const color = icon.color ?? [1, 1, 1];
+
+        const drawFace = (vertices, shade) => {
+            ctx.beginPath();
+            vertices.forEach(([px, py, pz], index) => {
+                const [screenX, screenY] = project(px, py, pz);
+                if (index === 0) ctx.moveTo(screenX, screenY);
+                else ctx.lineTo(screenX, screenY);
+            });
+            ctx.closePath();
+            ctx.fillStyle = shadeColor(color, shade);
+            ctx.fill();
+        };
+
+        // Draw the two visible sides first, then the top face for clean edges.
+        drawFace([
+            [-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz],
+        ], 0.62);
+        drawFace([
+            [hx, -hy, -hz], [hx, -hy, hz], [hx, hy, hz], [hx, hy, -hz],
+        ], 0.8);
+        drawFace([
+            [-hx, hy, -hz], [hx, hy, -hz], [hx, hy, hz], [-hx, hy, hz],
+        ], 1.15);
+    }
+
     update(canvas, deltaScale = 1) {
-        //swap with keys
-        for (let i = 0; i < this.WIDTH; i++) {
-            const key = (i + 1).toString();
-            const wasPressed = this.player.inputs.consumePress
-                ? this.player.inputs.consumePress(`hotbar${i + 1}`)
-                : this.player.inputs.keys[key];
-            if (wasPressed) {
-                const slot1 = i;
-                const slot2 = this.getMouseHoveredSlot(canvas);
-                this.swapItemsBySlot(slot1, slot2);
-
-                if (this.player.inputs.keys) this.player.inputs.keys[key] = false;
-            }
-        }
-
-        const inventoryClick = this.player.inputs.isMouseDown
-            ? this.player.inputs.isMouseDown('inventoryClick')
-            : this.player.inputs.mouse.buttons[0];
-        if (inventoryClick) {
+        const inventoryClick = this.player.inputs.consumeMousePress
+            ? this.player.inputs.consumeMousePress('inventoryClick')
+            : this.player.inputs.isMouseDown
+                ? this.player.inputs.isMouseDown('inventoryClick')
+                : this.player.inputs.mouse.buttons[0];
+        if (this.open && inventoryClick) {
             const slot = this.getMouseHoveredSlot(canvas);
-            const item = this.items.find(a => a.slot == slot && !a.delete);
-            const quickMove = this.player.inputs.isDown
-                ? this.player.inputs.isDown('quickMove')
-                : this.player.inputs.keys['shift'];
-            if (quickMove) {
-                if (item) this.moveToBestIndex(item);
-            }
+            if (slot !== null) this.onSlotClick(slot);
         }
 
         this.inventory.cleanupDeletedItems();
@@ -133,10 +166,6 @@ export default class InventoryView {
         return this.inventory.swapItemsBySlot(slot1, slot2);
     }
 
-    moveToBestIndex(item) {
-        return this.inventory.moveToBestIndex(item);
-    }
-
     getDrawPosition(slot, canvas) {
         const row = Math.floor(slot / this.WIDTH);
         const col = slot % this.WIDTH;
@@ -157,4 +186,10 @@ export default class InventoryView {
         const y = Math.lerp(closedY, openY, t);
         return { x, y };
     }
+}
+
+function shadeColor(color, brightness) {
+    // Keep even black item models readable against the translucent slot fill.
+    const channels = color.map(value => Math.max(0.06, Math.min(1, value * brightness)) * 255);
+    return `rgb(${channels[0]}, ${channels[1]}, ${channels[2]})`;
 }

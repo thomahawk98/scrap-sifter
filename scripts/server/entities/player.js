@@ -68,8 +68,6 @@ export default class Player extends Entity {
     };
 
     respawn() {
-        this.inventory.items = [];
-
         this.velocity = [0, 0, 0];
         this.pos = this.spawnPos;
         this.health = this.maxHealth;
@@ -101,9 +99,8 @@ export default class Player extends Entity {
         if (this.inventory.open) return;
 
         if (this.isMouseDown('shoot') && this.shootReload <= 0) {
-            this.shootBomb(world);
-            // this.shootBullet(world); // Keep the previous projectile available for easy switching.
-            this.shootReload = 18;
+            const usedItem = this.inventory.useSelectedItem(this, world);
+            if (usedItem) this.shootReload = usedItem.cooldown;
         }
 
         // get the block the player is looking at

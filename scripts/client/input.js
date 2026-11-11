@@ -8,7 +8,6 @@ export const DEFAULT_KEY_BINDINGS = {
     fovDown: 'z', fovUp: 'x',
     renderDistanceDown: '-', renderDistanceUp: '=',
     clearChunks: 'backspace', inspectChunk: ']', inspectChunks: '[',
-    quickMove: 'shift',
     hotbar1: '1', hotbar2: '2', hotbar3: '3', hotbar4: '4',
     hotbar5: '5', hotbar6: '6', hotbar7: '7', hotbar8: '8',
 };
@@ -46,6 +45,7 @@ export default class InputController {
             x: 0,
             y: 0,
             buttons: [false, false, false, false, false],
+            pressedButtons: [false, false, false, false, false],
             inBox(x, y, width, height) {
                 return this.x > x && this.x < x + width && this.y > y && this.y < y + height;
             },
@@ -66,7 +66,10 @@ export default class InputController {
         document.addEventListener('wheel', event => this.handleWheel(event));
         document.addEventListener('keydown', event => this.handleKeyDown(event));
         document.addEventListener('keyup', event => this.handleKeyUp(event));
-        document.addEventListener('mousedown', event => { this.mouse.buttons[event.button] = true; });
+        document.addEventListener('mousedown', event => {
+            this.mouse.buttons[event.button] = true;
+            this.mouse.pressedButtons[event.button] = true;
+        });
         document.addEventListener('mouseup', event => { this.mouse.buttons[event.button] = false; });
     }
 
@@ -148,6 +151,13 @@ export default class InputController {
 
     isMouseDown(action) {
         return this.mouse.buttons[this.mouseBindings[action]] === true;
+    }
+
+    consumeMousePress(action) {
+        const button = this.mouseBindings[action];
+        if (!this.mouse.pressedButtons[button]) return false;
+        this.mouse.pressedButtons[button] = false;
+        return true;
     }
 
     consumePress(action, clearBoundKeys = true) {
