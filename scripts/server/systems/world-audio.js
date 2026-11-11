@@ -60,7 +60,7 @@ export default class WorldAudioSystem {
 
 function isValidAudioType(value) {
     return typeof value === 'string' &&
-        /^[a-z0-9][a-z0-9_-]{0,63}(?:\.(?:ogg|mp3|wav|webm|m4a))?$/i.test(value);
+        /^[a-z0-9][a-z0-9 _-]{0,63}(?:\.(?:ogg|mp3|wav|webm|m4a))?$/i.test(value);
 }
 
 function isValidPosition(position) {

@@ -8,6 +8,7 @@ const DISTANCE_MUFFLE_CURVE = 0.9;
 const DISTANCE_VOLUME_CURVE = 2;
 const OCCLUSION_VOLUME_TRANSMISSION = 0.55;
 const OCCLUSION_RAY_RADIUS = 2;
+const MAX_AUDIO_EVENT_AGE_MS = 2000;
 
 // All sound sources, including local UI sounds and server events, pass through
 // this processor so listener-specific effects stay entirely client-side.
@@ -30,22 +31,24 @@ export default class AudioProcessor {
 
     play(event) {
         if (!event || typeof event.audioType !== 'string') return Promise.resolve(false);
-        return this.playAsync(event);
+        return this.playAsync(event, performance.now());
     }
 
-    async playAsync(event) {
+    async playAsync(event, receivedAt) {
         const context = this.getContext();
         if (!context) return false;
 
         try {
             if (context.state === 'suspended') await context.resume();
             const buffer = await this.getBuffer(event.audioType);
-            if (!buffer) return false;
+            // A slow asset fetch should not replay an old positional sound late.
+            if (!buffer || performance.now() - receivedAt > MAX_AUDIO_EVENT_AGE_MS) return false;
 
             const effects = this.getEffects(event);
             const source = context.createBufferSource();
             const filter = context.createBiquadFilter();
             const gain = context.createGain();
+            let panner = null;
             source.buffer = buffer;
             source.playbackRate.value = effects.pitch;
             filter.type = 'lowpass';
@@ -55,7 +58,7 @@ export default class AudioProcessor {
             filter.connect(gain);
 
             if (typeof context.createStereoPanner === 'function') {
-                const panner = context.createStereoPanner();
+                panner = context.createStereoPanner();
                 panner.pan.value = effects.pan;
                 gain.connect(panner);
                 panner.connect(context.destination);
@@ -63,6 +66,13 @@ export default class AudioProcessor {
                 gain.connect(context.destination);
             }
 
+            // Release the short-lived Web Audio nodes as soon as playback ends.
+            source.onended = () => {
+                source.disconnect();
+                filter.disconnect();
+                gain.disconnect();
+                panner?.disconnect();
+            };
             source.start();
             return true;
         } catch (error) {
@@ -85,20 +95,24 @@ export default class AudioProcessor {
     async getBuffer(audioType) {
         if (this.buffers.has(audioType)) return this.buffers.get(audioType);
 
-        const loading = this.loadBuffer(audioType);
+        const isBlockBreakSound = audioType.endsWith('-broken') && audioType !== 'block-broken.mp3';
+        const loading = this.loadBuffer(audioType, !isBlockBreakSound).then(buffer => {
+            if (buffer || !isBlockBreakSound) return buffer;
+            return this.getBuffer('block-broken.mp3');
+        });
         this.buffers.set(audioType, loading);
         const buffer = await loading;
         this.buffers.set(audioType, buffer);
         return buffer;
     }
 
-    async loadBuffer(audioType) {
+    async loadBuffer(audioType, warnOnMissing = true) {
         const filename = /\.(ogg|mp3|wav|webm|m4a)$/i.test(audioType)
             ? audioType
             : `${audioType}.mp3`;
         const response = await fetch(`${this.assetRoot}${encodeURIComponent(filename)}`);
         if (!response.ok) {
-            this.warnOnce(audioType, `Audio asset not found: ${this.assetRoot}${filename}`);
+            if (warnOnMissing) this.warnOnce(audioType, `Audio asset not found: ${this.assetRoot}${filename}`);
             return null;
         }
         const data = await response.arrayBuffer();

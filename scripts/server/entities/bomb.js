@@ -36,8 +36,10 @@ export default class Bomb extends Entity {
         }
 
         for (const entity of world.entities.values()) {
-            if (entity === this || entity === this.owner || entity.type === 'bullet' || entity.type === 'bomb') continue;
+            if (entity === this || entity === this.owner || entity.type === 'bullet') continue;
             if (overlaps(this, entity)) {
+                // Bombs touching each other trigger a short chain reaction.
+                if (entity.type === 'bomb') entity.explode(world);
                 this.explode(world);
                 return;
             }
@@ -65,7 +67,7 @@ export default class Bomb extends Entity {
 
                     const block = world.getBlock(x, y, z);
                     if (block.type !== 'air' && this.MAX_EXPLOSION_DAMAGE * blastPower > getBlockHealth(block.type)) {
-                        world.setBlock(x, y, z, { type: 'air' });
+                        world.setBlock(x, y, z, { type: 'air' }, { playBreakSound: false });
                     }
                 }
             }

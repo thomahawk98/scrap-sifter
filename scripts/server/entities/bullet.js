@@ -28,6 +28,7 @@ export default class Bullet extends Entity {
         // Block hits keep their existing behavior and take priority over entities.
         if (this.collidedBlock) {
             world.setBlock(...this.collidedBlock.pos, { type: 'air' });
+            this.emitDeathParticles(world);
             world.entities.remove(this);
             return;
         }
@@ -36,10 +37,20 @@ export default class Bullet extends Entity {
         // explicitly and only damage the first overlapping non-bullet entity.
         for (const target of world.entities.values()) {
             if (target === this || target === this.owner || target.type === 'bullet' || !overlaps(this, target)) continue;
-            target.takeDamage(this.damage, this, world);
+            if (target.type === 'bomb') target.explode(world);
+            else target.takeDamage(this.damage, this, world);
+            this.emitDeathParticles(world);
             world.entities.remove(this);
             return;
         }
+    }
+
+    emitDeathParticles(world) {
+        world.emitParticleEvent({
+            type: 'bullet-death',
+            position: [...this.pos],
+            color: [...this.material.color],
+        });
     }
 }
 

@@ -1,4 +1,5 @@
 import { Worker } from 'node:worker_threads';
+import { performance } from 'node:perf_hooks';
 
 export default class ChunkGenerator {
     constructor(manager, { workerCount = 2, batchSize = 4 } = {}) {
@@ -7,6 +8,7 @@ export default class ChunkGenerator {
         this.requestQueue = new Map();
         this.batchSize = batchSize;
         this.playerPositions = [];
+        this.diagnostics = { workerBatches: 0, workerChunks: 0, workerApplyMs: 0, workerApplyMaxMs: 0 };
         // Keep worker state in slots so concurrency can grow without adding
         // separate worker properties or dispatch paths.
         this.workers = Array.from({ length: workerCount }, () => {
@@ -98,6 +100,7 @@ export default class ChunkGenerator {
     }
 
     handleWorkerMessage(slot, data) {
+        const handlerStart = performance.now();
         const batch = slot.batch ?? [];
         const generatedChunks = new Map((data.chunks ?? []).map(chunk => [
             this.world.getChunkKey(...chunk.chunkPos), chunk,
@@ -114,6 +117,17 @@ export default class ChunkGenerator {
         slot.batch = null;
         slot.busy = false;
         this.processNextRequests();
+        this.diagnostics.workerBatches++;
+        this.diagnostics.workerChunks += generatedChunks.size;
+        const handlerDuration = performance.now() - handlerStart;
+        this.diagnostics.workerApplyMs += handlerDuration;
+        this.diagnostics.workerApplyMaxMs = Math.max(this.diagnostics.workerApplyMaxMs, handlerDuration);
+    }
+
+    drainDiagnostics() {
+        const diagnostics = this.diagnostics;
+        this.diagnostics = { workerBatches: 0, workerChunks: 0, workerApplyMs: 0, workerApplyMaxMs: 0 };
+        return diagnostics;
     }
 
     handleWorkerError(slot, error) {

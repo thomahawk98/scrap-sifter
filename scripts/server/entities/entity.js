@@ -33,7 +33,7 @@ export default class Entity {
     }
 
     takeDamage(amount, source = null, world = null) {
-        const damage = Number.isFinite(amount) ? Math.max(0, amount) : 0;
+        const damage = Number.isFinite(amount) ? Math.max(0, Math.round(amount)) : 0;
         if (damage === 0 || this.health <= 0) return false;
 
         this.health = Math.max(0, this.health - damage);
@@ -43,7 +43,7 @@ export default class Entity {
                 position: [...this.pos],
                 color: [...(this.material.color ?? [1, 1, 1])],
             });
-            this.die(source);
+            this.die(source, world);
         }
         return true;
     }

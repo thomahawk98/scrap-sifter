@@ -37,7 +37,7 @@ export default class Player extends Entity {
         this.inventory = new Inventory('default');
         this.menuOpen = false;
 
-        this.respawn();
+        this.respawn(world);
     }
 
     update(deltaScale = 1, { inputs, world, updateInventory } = {}) {
@@ -63,20 +63,99 @@ export default class Player extends Entity {
         }
 
         //respawn player
-        if (inputs.isDown ? inputs.isDown('respawn') : inputs.keys['enter']) this.respawn();
+        if (inputs.isDown ? inputs.isDown('respawn') : inputs.keys['enter']) this.respawn(world);
 
     };
 
-    respawn() {
+    respawn(world = null) {
         this.velocity = [0, 0, 0];
-        this.pos = this.spawnPos;
         this.health = this.maxHealth;
+        this.spawnSearchCooldown = 0;
+        const safePosition = this.findSafeSpawn(world, this.spawnPos);
+        if (safePosition) {
+            this.pos = safePosition;
+            this.spawnPos = [...safePosition];
+            this.needsSafeSpawn = false;
+        } else {
+            this.pos = [...this.spawnPos];
+            this.needsSafeSpawn = true;
+        }
+        this.head.pos = [...this.pos];
     };
 
     // Players return to their spawn immediately for now; a death screen can be
     // added later without changing damage handling.
-    die() {
-        this.respawn();
+    die(source = null, world = null) {
+        this.respawn(world);
+    }
+
+    ensureSafeSpawn(world) {
+        if (!this.needsSafeSpawn) return true;
+        if (this.spawnSearchCooldown > 0) {
+            this.spawnSearchCooldown--;
+            return false;
+        }
+        const safePosition = this.findSafeSpawn(world, this.spawnPos);
+        if (!safePosition) {
+            this.spawnSearchCooldown = 15;
+            return false;
+        }
+        this.pos = safePosition;
+        this.spawnPos = [...safePosition];
+        this.head.pos = [...safePosition];
+        this.needsSafeSpawn = false;
+        return true;
+    }
+
+    findSafeSpawn(world, preferredPosition) {
+        if (!world || !preferredPosition) return null;
+        const [preferredChunkX, preferredChunkY, preferredChunkZ] = world.getChunkCoords(...preferredPosition);
+        if (!world.getChunk(preferredChunkX, preferredChunkY, preferredChunkZ)) return null;
+
+        const baseX = Math.floor(preferredPosition[0]);
+        const baseY = Math.floor(preferredPosition[1]);
+        const baseZ = Math.floor(preferredPosition[2]);
+        const columns = [];
+        for (let dx = -4; dx <= 4; dx++) {
+            for (let dz = -4; dz <= 4; dz++) {
+                columns.push([baseX + dx + 0.5, baseZ + dz + 0.5]);
+            }
+        }
+        columns.sort((a, b) => {
+            const distanceA = (a[0] - preferredPosition[0]) ** 2 + (a[1] - preferredPosition[2]) ** 2;
+            const distanceB = (b[0] - preferredPosition[0]) ** 2 + (b[1] - preferredPosition[2]) ** 2;
+            return distanceA - distanceB;
+        });
+
+        const heights = [];
+        for (let offset = 0; offset <= 32; offset++) heights.push(baseY + offset + 0.5);
+        for (let offset = 1; offset <= 16; offset++) heights.push(baseY - offset + 0.5);
+
+        // Prefer a nearby clear column, scanning upward first to avoid spawning
+        // inside the terrain when the configured spawn point is obstructed.
+        for (const [x, z] of columns) {
+            for (const y of heights) {
+                const candidate = [x, y, z];
+                if (this.isPositionClear(world, candidate)) return candidate;
+            }
+        }
+        return null;
+    }
+
+    isPositionClear(world, position) {
+        const halfSize = [this.size.x, this.size.y, this.size.z].map(value => value * 0.5);
+        const min = position.map((value, axis) => Math.floor(value - halfSize[axis] + 1e-6));
+        const max = position.map((value, axis) => Math.floor(value + halfSize[axis] - 1e-6));
+        for (let x = min[0]; x <= max[0]; x++) {
+            for (let y = min[1]; y <= max[1]; y++) {
+                for (let z = min[2]; z <= max[2]; z++) {
+                    const [cx, cy, cz] = world.getChunkCoords(x, y, z);
+                    if (!world.getChunk(cx, cy, cz)) return false;
+                    if (world.getBlock(x, y, z).type !== 'air') return false;
+                }
+            }
+        }
+        return true;
     }
 
     updateBody() {

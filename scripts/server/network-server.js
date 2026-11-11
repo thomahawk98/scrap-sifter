@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import ServerRuntime from './runtime.js';
+import ServerLagMonitor from './systems/server-lag-monitor.js';
+import { performance } from 'node:perf_hooks';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const FIXED_STEP = 1 / 60;
@@ -17,6 +19,7 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
     const httpServer = createServer(app);
     const io = new Server(httpServer, { maxHttpBufferSize: 5e6 });
     const connectedPlayers = new Map();
+    let blockUpdateDeliveries = 0;
     const runtime = new ServerRuntime({
         spawnInitialPlayer: false,
         onChunkReady: (playerId, chunk) => io.to(String(playerId)).emit('chunk:data', chunk),
@@ -25,16 +28,23 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
             for (const [playerId, socket] of connectedPlayers) {
                 if (runtime.chunkManager.requestedBy.get(key)?.has(playerId)) {
                     socket.emit('block:update', change);
+                    blockUpdateDeliveries++;
                 }
             }
         },
     });
     let tick = 0;
+    const lagMonitor = new ServerLagMonitor(FIXED_STEP * 1000);
 
     io.on('connection', socket => {
         const player = runtime.addPlayer();
         player.spawnPos = [connectedPlayers.size * 1.5, 0, 0];
         player.pos = [...player.spawnPos];
+        // The constructor may have found a clear position before this network
+        // spawn offset was assigned, so validate the actual join location too.
+        player.needsSafeSpawn = true;
+        player.spawnSearchCooldown = 0;
+        player.ensureSafeSpawn(runtime.world);
         connectedPlayers.set(player.id, socket);
         socket.join(String(player.id));
         socket.emit('session:ready', {
@@ -101,31 +111,73 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
     });
 
     setInterval(() => {
+        const tickStart = performance.now();
+        let stageStart = tickStart;
         runtime.updateWorld(FIXED_STEP);
         runtime.updateEntities(1);
+        const simulationMs = performance.now() - stageStart;
+
+        stageStart = performance.now();
         runtime.updateChunks();
-        dispatchAudioEvents(runtime.world.audio.drainEvents(), runtime, connectedPlayers, io);
-        dispatchParticleEvents(runtime.world.drainParticleEvents(), runtime, connectedPlayers);
-        if (++tick % SNAPSHOT_INTERVAL !== 0) return;
-        const entities = [...runtime.world.entities.values()];
-        for (const [playerId, socket] of connectedPlayers) {
-            const player = runtime.getPlayer(playerId);
-            if (!player) continue;
-            const radius = ((player.renderDistance ?? runtime.world.renderDistance) + 1) * runtime.world.CHUNK_SIZE;
-            const radiusSquared = radius * radius;
-            const nearbyEntities = entities.filter(entity => {
-                if (entity.id === playerId) return true;
-                const dx = entity.pos[0] - player.pos[0];
-                const dy = entity.pos[1] - player.pos[1];
-                const dz = entity.pos[2] - player.pos[2];
-                return dx * dx + dy * dy + dz * dz <= radiusSquared;
-            });
-            socket.emit('world:snapshot', {
-                entities: nearbyEntities.map(serializeEntity),
-                daylight: runtime.world.daylight,
-                time: runtime.world.time,
-            });
+        const chunksMs = performance.now() - stageStart;
+
+        stageStart = performance.now();
+        const audioEvents = runtime.world.audio.drainEvents();
+        const particleEvents = runtime.world.drainParticleEvents();
+        const audioDeliveries = dispatchAudioEvents(audioEvents, runtime, connectedPlayers, io);
+        const particleDeliveries = dispatchParticleEvents(particleEvents, runtime, connectedPlayers);
+        const eventsMs = performance.now() - stageStart;
+
+        let snapshotDeliveries = 0;
+        let snapshotsMs = 0;
+        if (++tick % SNAPSHOT_INTERVAL === 0) {
+            stageStart = performance.now();
+            const entities = [...runtime.world.entities.values()];
+            for (const [playerId, socket] of connectedPlayers) {
+                const player = runtime.getPlayer(playerId);
+                if (!player) continue;
+                const radius = ((player.renderDistance ?? runtime.world.renderDistance) + 1) * runtime.world.CHUNK_SIZE;
+                const radiusSquared = radius * radius;
+                const nearbyEntities = entities.filter(entity => {
+                    if (entity.id === playerId) return true;
+                    const dx = entity.pos[0] - player.pos[0];
+                    const dy = entity.pos[1] - player.pos[1];
+                    const dz = entity.pos[2] - player.pos[2];
+                    return dx * dx + dy * dy + dz * dz <= radiusSquared;
+                });
+                socket.emit('world:snapshot', {
+                    entities: nearbyEntities.map(serializeEntity),
+                    daylight: runtime.world.daylight,
+                    time: runtime.world.time,
+                });
+                snapshotDeliveries++;
+            }
+            snapshotsMs = performance.now() - stageStart;
         }
+
+        const blockUpdatesThisTick = blockUpdateDeliveries;
+        blockUpdateDeliveries = 0;
+        const workerDiagnostics = runtime.chunkManager.generator.drainDiagnostics();
+        lagMonitor.record(tickStart, {
+            simulation: simulationMs,
+            chunks: chunksMs,
+            events: eventsMs,
+            snapshots: snapshotsMs,
+        }, {
+            blockUpdates: blockUpdatesThisTick,
+            audioEvents: audioEvents.length,
+            audioDeliveries,
+            particleEvents: particleEvents.length,
+            particleDeliveries,
+            snapshotDeliveries,
+            workerBatches: workerDiagnostics.workerBatches,
+            workerChunks: workerDiagnostics.workerChunks,
+            workerApplyMs: workerDiagnostics.workerApplyMs,
+            workerApplyMaxMs: workerDiagnostics.workerApplyMaxMs,
+            chunkQueue: runtime.chunkManager.generator.getPendingCount(),
+            entities: runtime.world.entities.entities.size,
+            clients: connectedPlayers.size,
+        });
     }, FIXED_STEP * 1000);
 
     httpServer.listen(port, host, () => {
@@ -142,9 +194,11 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
 }
 
 function dispatchAudioEvents(events, runtime, connectedPlayers, io) {
+    let deliveries = 0;
     for (const event of events) {
         if (event.scope === 'global') {
             io.emit('audio:play', event);
+            deliveries += connectedPlayers.size;
             continue;
         }
 
@@ -155,6 +209,7 @@ function dispatchAudioEvents(events, runtime, connectedPlayers, io) {
                 ? { ...event, distance: distanceBetween(event.position, player.pos) }
                 : event;
             io.to(String(event.playerId)).emit('audio:play', playerEvent);
+            deliveries++;
             continue;
         }
 
@@ -165,11 +220,14 @@ function dispatchAudioEvents(events, runtime, connectedPlayers, io) {
             const distance = distanceBetween(event.position, player.pos);
             if (distance > event.maxDistance) continue;
             socket.emit('audio:play', { ...event, distance });
+            deliveries++;
         }
     }
+    return deliveries;
 }
 
 function dispatchParticleEvents(events, runtime, connectedPlayers) {
+    let deliveries = 0;
     for (const event of events) {
         for (const [playerId, socket] of connectedPlayers) {
             const player = runtime.getPlayer(playerId);
@@ -177,8 +235,10 @@ function dispatchParticleEvents(events, runtime, connectedPlayers) {
             const maxDistance = ((player.renderDistance ?? runtime.world.renderDistance) + 1) * runtime.world.CHUNK_SIZE;
             if (distanceBetween(event.position, player.pos) > maxDistance) continue;
             socket.emit('particle:spawn', event);
+            deliveries++;
         }
     }
+    return deliveries;
 }
 
 function distanceBetween(first, second) {

@@ -29,8 +29,8 @@ export default class Inventory {
     getPreset(preset) {
         switch (preset) {
             case 'default': return [
-                new BulletItem({ amount: 64, slot: 0 }),
-                new BombItem({ amount: 16, slot: 1 }),
+                new BulletItem({ amount: 999, slot: 0 }),
+                new BombItem({ amount: 999, slot: 1 }),
             ];
             default:
                 console.log('unrecognized preset: ', preset);

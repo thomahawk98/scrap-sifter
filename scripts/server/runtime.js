@@ -102,6 +102,7 @@ export default class ServerRuntime {
     updateEntities(deltaScale) {
         this.world.entities.update(deltaScale, { world: this.world }, (entity, scale, context) => {
             if (this.world.players.has(entity.id)) {
+                if (entity.needsSafeSpawn && !entity.ensureSafeSpawn(this.world)) return;
                 const inputs = this.playerInputs.get(entity.id);
                 if (!inputs || inputs.paused) return;
                 // Do not let a newly connected player fall through terrain

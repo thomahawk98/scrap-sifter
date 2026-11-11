@@ -36,10 +36,15 @@ export default class ParticleSystem {
         this.emit(position, color, 44, 0.225, 32, 0.1, 0.2);
     }
 
+    spawnBulletDeath(position, color) {
+        this.emit(position, color, 8, 0.15, 18, 0.1, 0.2);
+    }
+
     handleEvent(event) {
         if (!event?.position) return;
         if (event.type === 'explosion') this.spawnExplosion(event.position);
         else if (event.type === 'entity-death') this.spawnEntityDeath(event.position, event.color ?? [1, 1, 1]);
+        else if (event.type === 'bullet-death') this.spawnBulletDeath(event.position, event.color ?? [0, 0, 0]);
     }
 
     emit(position, color, count, speed, life, minSize, maxSize) {

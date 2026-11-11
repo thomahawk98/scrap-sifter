@@ -107,7 +107,7 @@ export default class World {
         return { pos: [x, y, z], ...block };
     }
 
-    setBlock(x, y, z, block) {
+    setBlock(x, y, z, block, { playBreakSound = true } = {}) {
         const [cx, cy, cz] = this.getChunkCoords(x, y, z);
         const chunk = this.getChunk(cx, cy, cz);
         if (!chunk) return false;
@@ -122,7 +122,12 @@ export default class World {
         //set block
         const success = chunk.setBlock(lx, ly, lz, block);
 
-        if (success) this.onBlockChanged({ chunkPos: [cx, cy, cz], blockPos: [x, y, z], block, previousBlock });
+        if (success) {
+            this.onBlockChanged({ chunkPos: [cx, cy, cz], blockPos: [x, y, z], block, previousBlock });
+            if (playBreakSound && previousBlock.type !== 'air' && block.type === 'air') {
+                this.audio.playWorld(`${previousBlock.type}-broken`, [x + 0.5, y + 0.5, z + 0.5], { volume: 0.7 });
+            }
+        }
 
         return success;
     };
