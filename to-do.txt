@@ -1,6 +1,5 @@
 ADD:
 menu
-inputs file
 
 simplistic chunk edge geometry to render far away chunks?
 
@@ -15,30 +14,24 @@ trees
 bushes / grass / flowers
 
 music
-SFX
+SFX - In Progress
 textures
 
-health
-hunger
 temperature
-items
 
 sun / stars / moon
 lighting map (light sources)
 
-I think the ENTIRE chunk system needs a redo tbh
 chunk compression time out (proportional to amount of time spent in chunk)
 world files / downloads
-dirty chunk culling (out of player render distance) PLLLLEEEEASE
 global category variation regions
 
-entity buffers
 mobs
-player in game (so you can see yourself in f5)
 
-FIX:
-move all the way bug
-add more chunk-generation-workers, and make them process chunks in batches
+Make players not spawn inside blocks
+make assets load beforehand to prevent them needing to buffer first
+edit bomb launching audio
+add click to enable audio screen
 
 
 DONE:
