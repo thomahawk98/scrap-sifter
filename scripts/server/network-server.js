@@ -33,6 +33,7 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
 
     io.on('connection', socket => {
         const player = runtime.addPlayer();
+        player.name = socket.id;
         player.spawnPos = [connectedPlayers.size * 1.5, 0, 0];
         player.pos = [...player.spawnPos];
         // The constructor may have found a clear position before this network
@@ -205,7 +206,7 @@ function distanceBetween(first, second) {
 
 function serializeEntity(entity) {
     return {
-        id: entity.id, type: entity.type ?? 'entity', pos: [...entity.pos],
+        id: entity.id, type: entity.type ?? 'entity', name: entity.name ?? null, pos: [...entity.pos],
         orientation: [...entity.orientation], scale: [...entity.scale], velocity: [...entity.velocity],
         health: entity.health, maxHealth: entity.maxHealth,
         material: entity.material, visible: entity.visible,

@@ -2,6 +2,7 @@
 import * as shaders from './shaders.js';
 import EntityRenderer from './entity-renderer.js';
 import ParticleRenderer from './particle-renderer.js';
+import NametagRenderer from './nametag-renderer.js';
 import TextureAtlas from './texture-atlas.js';
 
 function getOutlineVertices(x, y, z) {
@@ -42,6 +43,7 @@ export default class Renderer {
         this.chunkBuffers = new Map();
         this.textureAtlas = new TextureAtlas(this.gl);
         this.init();
+        this.nametagRenderer = new NametagRenderer(this.gl);
         this.resize();
     }
 
@@ -260,6 +262,13 @@ export default class Renderer {
 
         // Effects are translucent billboards, drawn after opaque world geometry.
         if (particleSystem) this.particleRenderer.render(particleSystem.particles, camera, view, proj);
+
+        // Name labels are world-space billboards, but render after blocks so they
+        // remain visible through terrain. Range matches the server's entity snapshots.
+        this.nametagRenderer.render(
+            world.entities.values(), player, camera, view, proj,
+            (world.renderDistance + 1) * world.CHUNK_SIZE,
+        );
 
         //render outlined block
         if (player.outlinedBlock) {
