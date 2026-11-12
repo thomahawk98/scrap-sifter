@@ -1,5 +1,6 @@
 import ChunkMesher from './chunk-mesher.js';
 import { getBlockTypeFromId } from './shared/block-registry.js';
+import { getBorderSectionsForChunk } from './shared/world-border.js';
 
 const CHUNK_SIZE = 16;
 const UNKNOWN_VOXEL = 2;
@@ -51,7 +52,10 @@ export default class ClientChunkManager {
         for (const type of chunkBlockTypes) this.renderer.ensureBlockTexture(type);
         this.world.receiveChunk(data);
         const chunk = this.world.getChunk(...data.chunkPos);
-        if (chunk.empty) {
+        const borderSections = getBorderSectionsForChunk(
+            chunk.cx, chunk.cy, chunk.cz, this.world.borderDistance, CHUNK_SIZE,
+        );
+        if (chunk.empty && !borderSections.length) {
             chunk.geometry = { vertices: new Float32Array(), indices: new Uint32Array() };
             chunk.meshStatus = 'ready';
         } else this.queue(chunk);
@@ -173,7 +177,10 @@ export default class ClientChunkManager {
             slot.busy = true;
             slot.chunk = chunk;
             chunk.meshStatus = 'building';
-            slot.worker.postMessage({ key, cx: chunk.cx, cy: chunk.cy, cz: chunk.cz, revision, blocks, borderOccupancy },
+            slot.worker.postMessage({
+                key, cx: chunk.cx, cy: chunk.cy, cz: chunk.cz, revision, blocks,
+                borderOccupancy, borderDistance: this.world.borderDistance,
+            },
                 [blocks.buffer, borderOccupancy.buffer]);
         }
     }

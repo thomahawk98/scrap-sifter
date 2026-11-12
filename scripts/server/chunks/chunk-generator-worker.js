@@ -25,7 +25,6 @@ function generateChunkVoxels(chunkPos, seed) {
     for (let x = 0; x < CHUNK_SIZE; x++) {
         for (let y = 0; y < CHUNK_SIZE; y++) {
             for (let z = 0; z < CHUNK_SIZE; z++) {
-
                 const solid = terrain.getSolidityAt(baseX + x, baseY + y, baseZ + z, seed);
                 if (!solid) continue; // air, leave as a 0
 

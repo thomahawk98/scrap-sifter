@@ -1,5 +1,7 @@
 ADD:
+
 menu
+add click to enable audio screen
 
 simplistic chunk edge geometry to render far away chunks?
 
@@ -10,37 +12,26 @@ transparent block mesh
 
 structures
 ores
-trees
-bushes / grass / flowers
 
 music
 SFX - In Progress
-textures
+textures - In Progress
 
 temperature
 
-sun / stars / moon
 lighting map (light sources)
 
 chunk compression time out (proportional to amount of time spent in chunk)
 world files / downloads
 global category variation regions
 
-mobs
-
-make assets load beforehand to prevent them needing to buffer first
-edit bomb launching audio
-add click to enable audio screen
+npcs
 
 fix audio processor delay
 make certain audios fade more with distance
 pitch up / down audio for variation
+audio switch pan / volume periodically
+remove pausing as a feature
+
 delete entities after awhile
 make bullets destroy blocks based on damage, change stone health to match
-audio switch pan / volume periodically
-
-DONE:
-DONE day / night cycle
-DONE camera f5 scrolling
-DONE fog
-DONE depth shader

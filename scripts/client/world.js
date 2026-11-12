@@ -1,16 +1,19 @@
 import Chunk from './shared/chunk-data.js';
 
-// Client replica contains only the data needed for view, collision queries,
-// maps, and meshing. The server remains authoritative for world mutations.
+// Client replica contains the data needed for view, collision queries, and meshing.
+// The server remains authoritative for world mutations.
 export default class ClientWorld {
     // Allocate client-owned world replicas and default visibility settings.
     constructor() {
         this.seed = 0;
         this.daylight = 1;
         this.renderDistance = 5;
+        this.borderDistance = null;
         this.CHUNK_SIZE = 16;
         this.chunks = new Map();
         this.entities = new Map();
+        // Retain map positions separately from nearby, rendered entity replicas.
+        this.mapPlayers = new Map();
     }
 
     // Build the same coordinate key used by chunk storage and socket payloads.
@@ -125,6 +128,17 @@ export default class ClientWorld {
 
     // Remove a replica that left the world or is outside the latest visibility set.
     removeEntity(id) { this.entities.delete(id); }
+
+    // Keep lightweight positions for every connected player, outside render range.
+    upsertMapPlayer(data) {
+        let player = this.mapPlayers.get(data.id);
+        if (!player) {
+            player = { id: data.id, pos: [...data.pos], targetPos: [...data.pos] };
+            this.mapPlayers.set(data.id, player);
+        }
+        player.targetPos = [...data.pos];
+        return player;
+    }
 }
 
 // Create the client-side inventory shape required by the HUD and local controls.

@@ -42,9 +42,13 @@ const Physics = {
 
             // Stop flush against the first block face crossed by this motion.
             const halfExtent = entity.size[['x', 'y', 'z'][axis]] * 0.5;
-            entity.pos[axis] = speed > 0
-                ? collided.pos[axis] - halfExtent
-                : collided.pos[axis] + 1 + halfExtent;
+            if (collided.isWorldBorder) {
+                entity.pos[axis] = collided.plane - Math.sign(speed) * halfExtent;
+            } else {
+                entity.pos[axis] = speed > 0
+                    ? collided.pos[axis] - halfExtent
+                    : collided.pos[axis] + 1 + halfExtent;
+            }
         }
 
         return collided ? { block: collided, speed } : null;
@@ -91,6 +95,10 @@ const Physics = {
                 }
             }
         }
+
+        // Treat the border as the nearest virtual block face in the same sweep.
+        const borderBlock = world.getBorderCollisionBlock?.(axis, axisStart, speed, Math.abs(speed), closestDistance);
+        if (borderBlock) closestBlock = borderBlock;
         return closestBlock;
     },
     // Return the first intersecting voxel, or all intersecting voxels when requested.

@@ -10,7 +10,6 @@ import { getViewBasis, reverseView } from './shared/view-basis.js';
 import { getBlockFaceColor } from './shared/block-stats.js';
 import { raycast } from './shared/raycast.js';
 
-const CHUNK_MAP_REFRESH_MILLISECONDS = 100;
 const INPUT_SEND_MILLISECONDS = 50;
 const ENTITY_POSITION_INTERPOLATION = 0.15;
 
@@ -30,6 +29,10 @@ export default class User {
         this.input = new InputController({
             canvas: glCanvas, player: this.player, camera: this.camera, keyBindings, mouseBindings,
             onClearChunks: () => this.chunkManager.clear(),
+            onToggleMap: () => this.toggleWorldMap(),
+            onToggleMenu: () => this.toggleMenu(),
+            isMapPointerOver: event => this.hud?.worldMap.open &&
+                this.hud.worldMap.contains(event.clientX, event.clientY),
             changeRenderDistance: delta => {
                 this.world.renderDistance += delta;
                 this.world.renderDistance = Math.clamp(this.world.renderDistance, 2, 12);
@@ -43,7 +46,7 @@ export default class User {
         this.player.inputs = this.input;
 
         // hud canvas
-        this.hud = new Hud(hudCanvas, { getViewBasis });
+        this.hud = new Hud(hudCanvas);
         this.inventoryView = new InventoryView(
             this.player,
             slot => socket.emit('inventory:click', slot),
@@ -63,7 +66,6 @@ export default class User {
             }),
         });
 
-        this.lastChunkMapRefresh = 0;
         this.lastInputSent = 0;
         this.previousUpdateTime = null;
 
@@ -78,15 +80,18 @@ export default class User {
             // Clear previous requests and entity state before installing the new world.
             this.chunkManager.clear();
             this.world.entities.clear();
+            this.world.mapPlayers.clear();
 
             // update the world with the session data
             this.world.seed = session.world.seed;
             this.world.renderDistance = session.world.renderDistance;
+            this.world.borderDistance = session.world.borderDistance ?? null;
 
             // add player from session
             this.playerId = session.playerId;
             this.player.id = this.playerId;
             this.world.entities.set(this.playerId, this.player);
+            for (const player of session.players ?? []) this.world.upsertMapPlayer(player);
 
             // add other entities from the session
             for (const entity of session.entities)
@@ -98,8 +103,14 @@ export default class User {
 
 
         // update these later to work for all entities idk
-        this.socket.on('player:joined', player => this.world.upsertEntity(player, this.playerId));
-        this.socket.on('player:left', ({ id }) => this.world.removeEntity(id));
+        this.socket.on('player:joined', player => {
+            this.world.upsertEntity(player, this.playerId);
+            this.world.upsertMapPlayer(player);
+        });
+        this.socket.on('player:left', ({ id }) => {
+            this.world.removeEntity(id);
+            this.world.mapPlayers.delete(id);
+        });
 
 
         // receive info about world events / updates
@@ -122,6 +133,16 @@ export default class User {
 
             // remove entities that aren't visible anymore
             for (const id of this.world.entities.keys()) if (!visibleIds.has(id)) this.world.removeEntity(id);
+
+            // Keep the map's all-player feed independent from nearby render snapshots.
+            const mapPlayerIds = new Set();
+            for (const player of snapshot.players ?? []) {
+                mapPlayerIds.add(player.id);
+                this.world.upsertMapPlayer(player);
+            }
+            for (const id of this.world.mapPlayers.keys()) {
+                if (!mapPlayerIds.has(id)) this.world.mapPlayers.delete(id);
+            }
         });
         this.socket.on('particle:spawn', event => this.particles.handleEvent(event));
         this.socket.on('audio:play', event => this.audio.play(event));
@@ -132,6 +153,7 @@ export default class User {
             this.playerId = null;
             this.chunkManager.clear();
             this.world.entities.clear();
+            this.world.mapPlayers.clear();
             this.player.id = -1;
             this.world.entities.set(-1, this.player);
         });
@@ -140,6 +162,32 @@ export default class User {
 
     // Expose input pause state to the HUD without duplicating the input flag.
     get paused() { return this.input.paused; }
+
+    // Open the map without leaving gameplay controls active behind its panel.
+    toggleWorldMap() {
+        const map = this.hud.worldMap;
+        map.setOpen(!map.open);
+        if (map.open) {
+            this.mapWasPaused = this.input.paused;
+            this.player.menuOpen = true;
+            this.player.inventory.open = false;
+            this.input.paused = true;
+            document.exitPointerLock();
+            return;
+        }
+        this.player.closeMenu();
+        this.input.paused = this.mapWasPaused;
+        if (!this.input.paused) this.input.canvas.requestPointerLock();
+    }
+
+    // Let the shared menu key close the map before toggling the inventory panel.
+    toggleMenu() {
+        if (this.hud.worldMap.open) {
+            this.toggleWorldMap();
+            return;
+        }
+        this.input.toggleMenu();
+    }
 
     // Advance local effects, request chunks, send input, and ease snapshot positions.
     update(timestamp) {
@@ -162,6 +210,11 @@ export default class User {
                 entity.pos[axis] += (entity.targetPos[axis] - entity.pos[axis]) * ENTITY_POSITION_INTERPOLATION;
             }
         }
+        for (const player of this.world.mapPlayers.values()) {
+            for (let axis = 0; axis < 3; axis++) {
+                player.pos[axis] += (player.targetPos[axis] - player.pos[axis]) * ENTITY_POSITION_INTERPOLATION;
+            }
+        }
 
         // set local outlined block
         const { forward } = getViewBasis(this.player.orientation);
@@ -173,21 +226,13 @@ export default class User {
         this.updateInventory(deltaScale);
         if (this.playerId !== null) this.chunkManager.update(this.player);
         this.camera.update();
-        this.updateMaps(timestamp);
-    }
-
-    updateMaps(timestamp) {
-        // maps are expensive to update
-        if (timestamp - this.lastChunkMapRefresh < CHUNK_MAP_REFRESH_MILLISECONDS) return;
-        
-        for (const map of this.hud.maps) map.uploadData(this.player.pos, this.world);
-        this.lastChunkMapRefresh = timestamp;
+        this.hud.worldMap.update(timestamp);
     }
 
     draw(fps) {
         // render the 3d world, then draw HUD on top
         this.renderer.render(this.world, this.camera, this.player, this.particles);
-        this.hud.draw(this.paused, this.getDebugTexts(fps), this.player, this.input, this.inventoryView);
+        this.hud.draw(this.paused, this.getDebugTexts(fps), this.player, this.input, this.inventoryView, this.world);
     }
 
     getDebugTexts(fps) {

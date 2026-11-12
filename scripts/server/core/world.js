@@ -12,6 +12,7 @@ export default class World {
         this.time = 0;
         this.daylight = 1;
         this.renderDistance = 5; // in chunks
+        this.borderDistance = null;
 
         this.CHUNK_SIZE = 16;
         this.DAY_LENGTH_SECONDS = 600; // 10 minutes
@@ -49,6 +50,7 @@ export default class World {
 
     // Register a player with entity storage and chunk-boundary tracking.
     addPlayer(player) {
+        this.clampEntityPosition(player);
         this.entities.add(player);
         this.players.set(player.id, player);
         this.playerTrackers.set(player.id, new PlayerMovementTracker(player, this));
@@ -86,6 +88,48 @@ export default class World {
     getChunkCoords(x, y, z) {
         return [x, y, z].map(a => Math.floor(a / this.CHUNK_SIZE));
     };
+
+    // Keep a moving entity's full bounds inside the configured centered cube.
+    clampEntityPosition(entity) {
+        if (this.borderDistance === null) return false;
+        if (!Number.isFinite(this.borderDistance) || this.borderDistance < 0) return false;
+
+        let clamped = false;
+        for (let axis = 0; axis < 3; axis++) {
+            const halfExtent = (entity.size?.[['x', 'y', 'z'][axis]] ?? 0) * 0.5;
+            const min = -this.borderDistance + halfExtent;
+            const max = this.borderDistance - halfExtent;
+            const boundedPosition = min <= max
+                ? Math.max(min, Math.min(max, entity.pos[axis]))
+                : 0;
+            if (boundedPosition === entity.pos[axis]) continue;
+            entity.pos[axis] = boundedPosition;
+            if (entity.velocity) entity.velocity[axis] = 0;
+            clamped = true;
+        }
+        return clamped;
+    }
+
+    // Check whether every face of an entity's bounds fits inside the world cube.
+    isEntityInsideBorder(entity) {
+        if (this.borderDistance === null) return true;
+        if (!Number.isFinite(this.borderDistance) || this.borderDistance < 0) return false;
+        return ['x', 'y', 'z'].every((axis, index) => {
+            const halfExtent = (entity.size?.[axis] ?? 0) * 0.5;
+            return entity.pos[index] - halfExtent >= -this.borderDistance &&
+                entity.pos[index] + halfExtent <= this.borderDistance;
+        });
+    }
+
+    // Return a virtual block hit when movement reaches one of the six border faces.
+    getBorderCollisionBlock(axis, axisStart, speed, maxDistance, closestDistance) {
+        if (this.borderDistance === null || !Number.isFinite(this.borderDistance)) return null;
+        const plane = speed > 0 ? this.borderDistance : -this.borderDistance;
+        const travelled = speed > 0 ? plane - axisStart : axisStart - plane;
+        const distance = Math.max(0, travelled);
+        if (travelled > maxDistance + 1e-8 || distance > closestDistance + 1e-8) return null;
+        return { type: 'world-border', isWorldBorder: true, axis, plane };
+    }
 
     // Return chunk data only after generation has fully completed.
     getChunk(cx, cy, cz) {

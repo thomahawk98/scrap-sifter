@@ -10,6 +10,7 @@ export const DEFAULT_KEY_BINDINGS = {
     clearChunks: 'backspace', inspectChunk: ']', inspectChunks: '[',
     hotbar1: '1', hotbar2: '2', hotbar3: '3', hotbar4: '4',
     hotbar5: '5', hotbar6: '6', hotbar7: '7', hotbar8: '8',
+    toggleMap: 'm',
 };
 
 export const DEFAULT_MOUSE_BINDINGS = { shoot: 0, roll: 1, place: 2, inventoryClick: 0 };
@@ -25,6 +26,9 @@ export default class InputController {
         clampRenderDistance = () => {},
         inspectChunk = () => {},
         inspectChunks = () => {},
+        onToggleMap = () => {},
+        onToggleMenu = () => this.toggleMenu(),
+        isMapPointerOver = () => false,
     }) {
         this.canvas = canvas;
         this.player = player;
@@ -35,6 +39,9 @@ export default class InputController {
         this.clampRenderDistance = clampRenderDistance;
         this.inspectChunk = inspectChunk;
         this.inspectChunks = inspectChunks;
+        this.onToggleMap = onToggleMap;
+        this.onToggleMenu = onToggleMenu;
+        this.isMapPointerOver = isMapPointerOver;
 
         // controls
         const configuredBindings = { ...DEFAULT_KEY_BINDINGS, ...keyBindings };
@@ -90,6 +97,7 @@ export default class InputController {
 
     // Adjust third-person camera distance while preserving first-person behavior.
     handleWheel(event) {
+        if (this.isMapPointerOver(event)) return;
         if (this.player.perspectiveMode === 0) return;
         this.camera.viewDistance = Math.clamp(this.camera.viewDistance + event.deltaY * 0.075, 3, 100);
     }
@@ -120,7 +128,8 @@ export default class InputController {
         }
         if (this.consumePress('inspectChunks')) this.inspectChunks();
 
-        if (this.consumePress('toggleMenu')) this.toggleMenu();
+        if (this.consumePress('toggleMenu')) this.onToggleMenu();
+        if (this.consumePress('toggleMap')) this.onToggleMap();
 
         if (!this.player.menuOpen) {
             for (let slot = 0; slot < this.player.inventory.WIDTH; slot++) {
@@ -187,6 +196,7 @@ export default class InputController {
     snapshot() {
         const actions = {};
         for (const action of Object.keys(this.keyBindings)) {
+            if (action === 'toggleMap') continue;
             actions[action] = !this.paused && this.isDown(action);
             actions[`pressed:${action}`] = !this.paused && !!this.pressedActions[action];
         }

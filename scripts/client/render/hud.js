@@ -1,16 +1,15 @@
-import { ChunkMap } from '../ui/maps.js';
+import WorldMap from '../ui/world-map.js';
+
 export default class Hud {
-    // Bind the HUD canvas and the map renderer to the camera orientation helper.
-    constructor(canvas, { getViewBasis }) {
+    // Bind the HUD canvas used for inventory, diagnostics, health, and crosshair.
+    constructor(canvas) {
         this.canvas = canvas;
         this.ctx = canvas.getContext("2d");
-
-        this.maps = [new ChunkMap()];
-        this.getViewBasis = getViewBasis;
+        this.worldMap = new WorldMap(canvas);
     }
 
-    // Compose the inventory, pause state, diagnostics, health bar, and maps each frame.
-    draw(paused, debugTexts, player, inputs, inventoryView) {
+    // Compose the inventory, pause state, diagnostics, and health bar each frame.
+    draw(paused, debugTexts, player, inputs, inventoryView, world) {
         const ctx = this.ctx;
         const canvas = this.canvas;
         const cx = this.canvas.width * 0.5;
@@ -38,7 +37,7 @@ export default class Hud {
 
         this.drawDebugTexts(ctx, debugTexts);
         this.drawHealthBar(ctx, player);
-        this.drawMaps(ctx, player);
+        this.worldMap.draw(ctx, world, player);
     }
 
     // Draw current health and its threshold-colored fill in the upper corner.
@@ -111,40 +110,4 @@ export default class Hud {
         }
     }
 
-    // Draw map canvases and rotate the direction marker with the player's view.
-    drawMaps(ctx, player) {
-        //display maps
-        for (let i = 0; i < this.maps.length; i++) {
-            const map = this.maps[i];
-            //draw temperature map
-            const mapWidth = 175, mapHeight = 175;
-            const x = 10 + i * (mapWidth + 10), y = this.canvas.height - mapHeight - 10;
-            ctx.drawImage(
-                map.canvas,
-                x, y,
-                mapWidth, mapHeight
-            );
-
-            //draw player direction arrow on map
-            const arrow = {
-                x: x + mapWidth * 0.5,
-                y: y + mapHeight * 0.5,
-            };
-
-            ctx.save();
-            ctx.translate(arrow.x, arrow.y);
-            const { forward } = this.getViewBasis(player.orientation);
-            ctx.rotate(Math.atan2(forward[0], -forward[2]));
-
-            ctx.fillStyle = 'red';
-            ctx.beginPath();
-            ctx.moveTo(0, -8);
-            ctx.lineTo(5, 2);
-            ctx.lineTo(-5, 2);
-            ctx.closePath();
-            ctx.fill();
-
-            ctx.restore();
-        }
-    }
 }

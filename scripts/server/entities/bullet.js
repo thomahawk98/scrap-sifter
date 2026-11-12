@@ -29,7 +29,9 @@ export default class Bullet extends Entity {
 
         // Block hits keep their existing behavior and take priority over entities.
         if (this.collidedBlock) {
-            world.setBlock(...this.collidedBlock.pos, { type: 'air' });
+            if (!this.collidedBlock.isWorldBorder) {
+                world.setBlock(...this.collidedBlock.pos, { type: 'air' });
+            }
             this.emitDeathParticles(world);
             world.entities.remove(this);
             return;

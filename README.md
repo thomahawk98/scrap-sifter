@@ -26,8 +26,8 @@ between those two sides.
   `scripts/client/chunk-mesher.js` builds CPU geometry; the browser worker runs
   that same mesher off the render thread.
 - `scripts/client/render/` owns WebGL drawing, texture atlases, camera matrices,
-  particles, and name labels. `scripts/client/ui/` owns the HUD, map, and
-  inventory presentation. `scripts/client/audio/` applies listener-specific
+  particles, and name labels. `scripts/client/ui/` owns the HUD and inventory
+  presentation. `scripts/client/audio/` applies listener-specific
   volume, panning, and occlusion to sound events.
 - `scripts/client/shared/` contains client-side copies of voxel encodings,
   geometry data, and math helpers needed by browser workers and rendering.
@@ -48,6 +48,10 @@ between those two sides.
   voxel buffers in Node worker threads. Only voxel data crosses the network.
 - `scripts/server/systems/` contains collision, raycasting, audio event
   collection, movement tracking, and server timing support.
+
+The server world defaults to a cube centered at the origin with a 200-unit edge.
+`World.borderDistance` is the distance from the center to each face (100 by
+default); set it to `null` to keep terrain and entity positions unbounded.
 
 ### Data and performance boundaries
 

@@ -49,6 +49,8 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
         player.name = socket.id;
         player.spawnPos = [connectedPlayers.size * 1.5, 0, 0];
         player.pos = [...player.spawnPos];
+        runtime.world.clampEntityPosition(player);
+        player.spawnPos = [...player.pos];
         // The constructor may have found a clear position before this network
         // spawn offset was assigned, so validate the actual join location too.
         player.needsSafeSpawn = true;
@@ -58,7 +60,12 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
         socket.join(String(player.id));
         socket.emit('session:ready', {
             playerId: player.id,
-            world: { seed: runtime.world.seed, renderDistance: runtime.world.renderDistance, chunkSize: runtime.world.CHUNK_SIZE },
+            world: {
+                seed: runtime.world.seed,
+                renderDistance: runtime.world.renderDistance,
+                chunkSize: runtime.world.CHUNK_SIZE,
+                borderDistance: runtime.world.borderDistance,
+            },
             players: [...runtime.world.getPlayers()].map(serializeEntity),
             entities: [...runtime.world.entities.values()].map(serializeEntity),
         });
@@ -138,6 +145,10 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
 
         if (++tick % SNAPSHOT_INTERVAL === 0) {
             const entities = [...runtime.world.entities.values()];
+            // Share compact positions so each client can map distant players.
+            const mapPlayers = [...runtime.world.getPlayers()].map(({ id, pos }) => ({
+                id, pos: [...pos],
+            }));
             for (const [playerId, socket] of connectedPlayers) {
                 const player = runtime.getPlayer(playerId);
                 if (!player) continue;
@@ -152,6 +163,7 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
                 });
                 socket.emit('world:snapshot', {
                     entities: nearbyEntities.map(serializeEntity),
+                    players: mapPlayers,
                     daylight: runtime.world.daylight,
                     time: runtime.world.time,
                 });

@@ -44,6 +44,7 @@ export default class ServerRuntime {
         for (let count = 0; count < TARGETS_PER_SPAWN_CHUNK && activeTargets + count < MAX_ACTIVE_TARGETS; count++) {
             const target = Target.createForChunk(chunk);
             if (!target) break;
+            if (!this.world.isEntityInsideBorder(target)) continue;
             this.world.entities.add(target);
             this.hasSpawnedInitialTarget = true;
         }
@@ -126,6 +127,8 @@ export default class ServerRuntime {
             }
             entity.update(scale, context);
         });
+        // Clamp every entity after its update, including paused entities and projectiles.
+        for (const entity of this.world.entities.values()) this.world.clampEntityPosition(entity);
         this.world.updatePlayerTrackers();
     }
 

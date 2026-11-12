@@ -278,10 +278,8 @@ export default class Renderer {
             (world.renderDistance + 1) * world.CHUNK_SIZE,
         );
 
-        //render outlined block
-        if (player.outlinedBlock) {
-            this.renderOutline(player.outlinedBlock, view, proj);
-        }
+        // Draw the selected block outline above the chunk geometry.
+        if (player.outlinedBlock) this.renderOutline(player.outlinedBlock, view, proj);
     }
 
     // Upload the current camera projection and view matrices to the world program.
