@@ -1,5 +1,5 @@
 const CHUNK_SIZE = 16;
-const FRACTAL_FADE_DISTANCE = 15;
+const FRACTAL_FADE_DISTANCE = 20;
 
 // Track nested local map cubes and their continuous boundary transitions.
 export default class WorldMapScale {

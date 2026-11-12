@@ -117,7 +117,7 @@ export default class ServerRuntime {
             if (this.world.players.has(entity.id)) {
                 if (entity.needsSafeSpawn && !entity.ensureSafeSpawn(this.world)) return;
                 const inputs = this.playerInputs.get(entity.id);
-                if (!inputs || inputs.paused) return;
+                if (!inputs) return;
                 // Do not let a newly connected player fall through terrain
                 // while their spawn chunk is still being generated.
                 const centerChunk = this.world.getChunkCoords(...entity.pos);
@@ -127,7 +127,7 @@ export default class ServerRuntime {
             }
             entity.update(scale, context);
         });
-        // Clamp every entity after its update, including paused entities and projectiles.
+        // Clamp every entity after its update, including projectiles.
         for (const entity of this.world.entities.values()) this.world.clampEntityPosition(entity);
         this.world.updatePlayerTrackers();
     }

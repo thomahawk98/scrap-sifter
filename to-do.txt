@@ -31,7 +31,9 @@ fix audio processor delay
 make certain audios fade more with distance
 pitch up / down audio for variation
 audio switch pan / volume periodically
-remove pausing as a feature
 
 delete entities after awhile
 make bullets destroy blocks based on damage, change stone health to match
+
+mysterious mouse jumping bug???
+- couldnt find anything unusual in performance tab

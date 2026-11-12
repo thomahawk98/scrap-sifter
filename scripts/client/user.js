@@ -160,24 +160,18 @@ export default class User {
     }
 
 
-    // Expose input pause state to the HUD without duplicating the input flag.
-    get paused() { return this.input.paused; }
-
     // Open the map without leaving gameplay controls active behind its panel.
     toggleWorldMap() {
         const map = this.hud.worldMap;
         map.setOpen(!map.open);
         if (map.open) {
-            this.mapWasPaused = this.input.paused;
             this.player.menuOpen = true;
             this.player.inventory.open = false;
-            this.input.paused = true;
             document.exitPointerLock();
             return;
         }
         this.player.closeMenu();
-        this.input.paused = this.mapWasPaused;
-        if (!this.input.paused) this.input.canvas.requestPointerLock();
+        this.input.canvas.requestPointerLock();
     }
 
     // Let the shared menu key close the map before toggling the inventory panel.
@@ -232,7 +226,7 @@ export default class User {
     draw(fps) {
         // render the 3d world, then draw HUD on top
         this.renderer.render(this.world, this.camera, this.player, this.particles);
-        this.hud.draw(this.paused, this.getDebugTexts(fps), this.player, this.input, this.inventoryView, this.world);
+        this.hud.draw(this.getDebugTexts(fps), this.player, this.input, this.inventoryView, this.world);
     }
 
     getDebugTexts(fps) {

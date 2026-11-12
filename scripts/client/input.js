@@ -61,8 +61,6 @@ export default class InputController {
                 return this.x > x && this.x < x + width && this.y > y && this.y < y + height;
             },
         };
-        this.paused = true;
-
         this.bindEvents();
     }
 
@@ -71,7 +69,6 @@ export default class InputController {
         this.canvas.addEventListener('click', () => {
             if (this.player.menuOpen) return;
             this.canvas.requestPointerLock();
-            this.paused = false;
         });
 
         document.addEventListener('mousemove', event => this.handleMouseMove(event));
@@ -118,8 +115,6 @@ export default class InputController {
         this.clampRenderDistance();
 
         if (this.consumePress('clearChunks', false)) {
-            document.exitPointerLock();
-            this.paused = true;
             this.onClearChunks();
         }
 
@@ -194,17 +189,17 @@ export default class InputController {
 
     // send a snapshot of the actions, not the keybindings
     snapshot() {
+        const controlsActive = document.pointerLockElement === this.canvas && !this.player.menuOpen;
         const actions = {};
         for (const action of Object.keys(this.keyBindings)) {
             if (action === 'toggleMap') continue;
-            actions[action] = !this.paused && this.isDown(action);
-            actions[`pressed:${action}`] = !this.paused && !!this.pressedActions[action];
+            actions[action] = controlsActive && this.isDown(action);
+            actions[`pressed:${action}`] = controlsActive && !!this.pressedActions[action];
         }
         const snapshot = {
             orientation: [...this.player.orientation],
             actions,
-            buttons: this.paused ? [] : [...this.mouse.buttons],
-            paused: this.paused,
+            buttons: controlsActive ? [...this.mouse.buttons] : [],
             menuOpen: this.player.menuOpen,
             inventory: {
                 open: this.player.inventory.open,

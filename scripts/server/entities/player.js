@@ -218,7 +218,7 @@ export default class Player extends Entity {
         return this.inputs.mouse.buttons[button];
     }
 
-    // Close both the pause menu and the server inventory panel state.
+    // Close the player menu and its inventory panel state.
     closeMenu() {
         this.menuOpen = false;
         if (this.inventory.open) this.inventory.open = false;

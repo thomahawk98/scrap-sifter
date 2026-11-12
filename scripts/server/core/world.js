@@ -12,7 +12,7 @@ export default class World {
         this.time = 0;
         this.daylight = 1;
         this.renderDistance = 5; // in chunks
-        this.borderDistance = null;
+        this.borderDistance = 200;
 
         this.CHUNK_SIZE = 16;
         this.DAY_LENGTH_SECONDS = 600; // 10 minutes

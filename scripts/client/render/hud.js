@@ -8,8 +8,8 @@ export default class Hud {
         this.worldMap = new WorldMap(canvas);
     }
 
-    // Compose the inventory, pause state, diagnostics, and health bar each frame.
-    draw(paused, debugTexts, player, inputs, inventoryView, world) {
+    // Compose the inventory, diagnostics, health bar, and world map each frame.
+    draw(debugTexts, player, inputs, inventoryView, world) {
         const ctx = this.ctx;
         const canvas = this.canvas;
         const cx = this.canvas.width * 0.5;
@@ -22,18 +22,7 @@ export default class Hud {
         inventoryView.draw(ctx, canvas, inputs);
 
         ctx.globalAlpha = 1;
-        if (paused) {
-            ctx.textAlign = "center";
-            ctx.textBaseline = 'middle';
-
-            //pause text
-            ctx.fillStyle = 'white';
-            ctx.font = "bold 40px Tahoma";
-            ctx.fillText('Click anywhere to unpause game', cx, cy);
-        } else {
-            //draw crosshair
-            this.drawCrosshair(ctx, cx, cy);
-        }
+        if (!player.menuOpen) this.drawCrosshair(ctx, cx, cy);
 
         this.drawDebugTexts(ctx, debugTexts);
         this.drawHealthBar(ctx, player);

@@ -308,7 +308,6 @@ function createServerInput(input) {
     const actions = { ...input.actions };
     const buttons = [...input.buttons];
     return {
-        paused: !!input.paused,
         keys: {}, mouse: { buttons, inBox: () => false },
         isDown: action => !!actions[action],
         consumePress: action => { const pressed = !!actions[`pressed:${action}`]; actions[`pressed:${action}`] = false; return pressed; },
