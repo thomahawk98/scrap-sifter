@@ -1,6 +1,7 @@
 import FPSTracker from './systems/fps-tracker.js';
 import AssetLoader from './asset-loader.js';
 import Game from './game.js';
+import MainMenu from './ui/main-menu.js';
 import './shared/math-patch.js';
 
 // browser entry point; load client assets and start the presentation frame loop.
@@ -39,6 +40,16 @@ try {
 }
 
 
-// create the game and start the loop
-const game = new Game({ assetLoader });
-new ClientUpdateLoop(game).start();
+// Build a game session only after a lobby is selected and accepted by the server.
+new MainMenu(document.getElementById('menu-root'), assetLoader, (lobby, menu) => {
+    const game = new Game({ assetLoader, lobby });
+    game.socket.once('session:ready', () => {
+        menu.onJoined();
+        new ClientUpdateLoop(game).start();
+    });
+    game.socket.on('connect_error', () => {
+        game.socket.disconnect();
+        menu.onError('Could not connect to the selected lobby.');
+    });
+    game.socket.connect();
+});

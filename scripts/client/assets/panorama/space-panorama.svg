@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="900" viewBox="0 0 2400 900">
+  <defs>
+    <linearGradient id="space" x2="0" y2="1">
+      <stop stop-color="#080b22"/>
+      <stop offset=".55" stop-color="#29204e"/>
+      <stop offset="1" stop-color="#090d20"/>
+    </linearGradient>
+    <radialGradient id="nebula">
+      <stop stop-color="#b84eff" stop-opacity=".48"/>
+      <stop offset="1" stop-color="#2736bb" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="horizon" x2="0" y2="1">
+      <stop stop-color="#d969ff" stop-opacity=".8"/>
+      <stop offset="1" stop-color="#172c68" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="2400" height="900" fill="url(#space)"/>
+  <ellipse cx="700" cy="360" rx="760" ry="420" fill="url(#nebula)"/>
+  <ellipse cx="1830" cy="290" rx="620" ry="430" fill="url(#nebula)" opacity=".65"/>
+  <g fill="#fff">
+    <circle cx="86" cy="121" r="2"/><circle cx="218" cy="341" r="1.5"/><circle cx="336" cy="86" r="2"/>
+    <circle cx="472" cy="245" r="1.5"/><circle cx="603" cy="113" r="2"/><circle cx="725" cy="398" r="1.5"/>
+    <circle cx="848" cy="178" r="2"/><circle cx="1004" cy="74" r="1.5"/><circle cx="1110" cy="308" r="2"/>
+    <circle cx="1266" cy="134" r="1.5"/><circle cx="1386" cy="372" r="2"/><circle cx="1518" cy="97" r="1.5"/>
+    <circle cx="1662" cy="249" r="2"/><circle cx="1788" cy="118" r="1.5"/><circle cx="1940" cy="364" r="2"/>
+    <circle cx="2077" cy="161" r="1.5"/><circle cx="2229" cy="77" r="2"/><circle cx="2338" cy="290" r="1.5"/>
+    <circle cx="144" cy="525" r="1.5"/><circle cx="431" cy="456" r="2"/><circle cx="978" cy="489" r="1.5"/>
+    <circle cx="1319" cy="510" r="1.5"/><circle cx="1720" cy="470" r="2"/><circle cx="2166" cy="518" r="1.5"/>
+  </g>
+  <path d="M0 720 Q430 660 820 735 T1600 706 T2400 730 V900 H0Z" fill="#11152c"/>
+  <path d="M0 735 Q430 678 820 752 T1600 723 T2400 747" fill="none" stroke="url(#horizon)" stroke-width="6"/>
+</svg>

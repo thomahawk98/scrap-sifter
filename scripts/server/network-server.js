@@ -15,6 +15,14 @@ const SNAPSHOT_INTERVAL = 3;
 // Serve the browser game and its Socket.IO transport from one LAN origin.
 export function createNetworkServer({ port = Number(process.env.PORT) || 3000, host = process.env.HOST || '0.0.0.0' } = {}) {
     const app = express();
+    const lobbies = new Map();
+    const addLobby = (id, name) => {
+        if (lobbies.has(id)) throw new Error(`Lobby already exists: ${id}`);
+        const lobby = createLobby(id, name);
+        lobbies.set(id, lobby);
+        return lobby;
+    };
+    addLobby('main', 'Main Lobby');
     app.get('/asset-manifest', async (_request, response) => {
         try {
             response.set('Cache-Control', 'no-store');
@@ -24,27 +32,30 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
             response.status(500).json({ error: 'Could not load game assets.' });
         }
     });
+    // Publish open server worlds for the title screen without creating players.
+    app.get('/api/lobbies', (_request, response) => {
+        response.json([...lobbies.values()]
+            .filter(lobby => lobby.open)
+            .map(({ id, name, runtime }) => ({ id, name, players: runtime.world.players.size })));
+    });
     // Expose only the browser application and its assets from the web root.
     app.use(express.static(clientRoot));
     const httpServer = createServer(app);
     const io = new Server(httpServer, { maxHttpBufferSize: 5e6 });
-    const connectedPlayers = new Map();
-    const runtime = new ServerRuntime({
-        spawnInitialPlayer: false,
-        onChunkReady: (playerId, chunk) => io.to(String(playerId)).emit('chunk:data', chunk),
-        onBlockChanged: change => {
-            const key = change.chunkPos.join(',');
-            for (const [playerId, socket] of connectedPlayers) {
-                if (runtime.chunkManager.requestedBy.get(key)?.has(playerId)) {
-                    socket.emit('block:update', change);
-                }
-            }
-        },
-    });
     let tick = 0;
 
-    // Create a server-owned player and initialize its client session on connect.
+    // Reject unknown or closed lobby IDs before a socket can create a player.
+    io.use((socket, next) => {
+        const lobby = lobbies.get(socket.handshake.auth?.lobbyId);
+        if (!lobby?.open) return next(new Error('That lobby is no longer available.'));
+        next();
+    });
+
+    // Attach a transport only to the lobby explicitly selected on the title screen.
     io.on('connection', socket => {
+        const lobby = lobbies.get(socket.handshake.auth?.lobbyId);
+        const { runtime, connectedPlayers } = lobby;
+        socket.join(`lobby:${lobby.id}`);
         const player = runtime.addPlayer();
         player.name = socket.id;
         player.spawnPos = [connectedPlayers.size * 1.5, 0, 0];
@@ -57,7 +68,7 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
         player.spawnSearchCooldown = 0;
         player.ensureSafeSpawn(runtime.world);
         connectedPlayers.set(player.id, socket);
-        socket.join(String(player.id));
+        socket.join(`${lobby.id}:${player.id}`);
         socket.emit('session:ready', {
             playerId: player.id,
             world: {
@@ -69,7 +80,7 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
             players: [...runtime.world.getPlayers()].map(serializeEntity),
             entities: [...runtime.world.entities.values()].map(serializeEntity),
         });
-        socket.broadcast.emit('player:joined', serializeEntity(player));
+        socket.to(`lobby:${lobby.id}`).emit('player:joined', serializeEntity(player));
 
         // Accept only finite, complete action snapshots before changing simulation input.
         socket.on('player:input', input => {
@@ -128,45 +139,24 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
             connectedPlayers.delete(player.id);
             runtime.chunkManager.releaseAll(player.id);
             runtime.removePlayer(player.id);
-            io.emit('player:left', { id: player.id });
+            io.to(`lobby:${lobby.id}`).emit('player:left', { id: player.id });
         });
     });
 
     // Run fixed simulation steps, dispatch transient events, and send periodic snapshots.
     setInterval(() => {
-        runtime.updateWorld(FIXED_STEP);
-        runtime.updateEntities(1);
-        runtime.updateChunks();
-
-        const audioEvents = runtime.world.audio.drainEvents();
-        const particleEvents = runtime.world.drainParticleEvents();
-        dispatchAudioEvents(audioEvents, runtime, connectedPlayers, io);
-        dispatchParticleEvents(particleEvents, runtime, connectedPlayers);
-
         if (++tick % SNAPSHOT_INTERVAL === 0) {
-            const entities = [...runtime.world.entities.values()];
-            // Share compact positions so each client can map distant players.
-            const mapPlayers = [...runtime.world.getPlayers()].map(({ id, pos }) => ({
-                id, pos: [...pos],
-            }));
-            for (const [playerId, socket] of connectedPlayers) {
-                const player = runtime.getPlayer(playerId);
-                if (!player) continue;
-                const radius = ((player.renderDistance ?? runtime.world.renderDistance) + 1) * runtime.world.CHUNK_SIZE;
-                const radiusSquared = radius * radius;
-                const nearbyEntities = entities.filter(entity => {
-                    if (entity.id === playerId) return true;
-                    const dx = entity.pos[0] - player.pos[0];
-                    const dy = entity.pos[1] - player.pos[1];
-                    const dz = entity.pos[2] - player.pos[2];
-                    return dx * dx + dy * dy + dz * dz <= radiusSquared;
-                });
-                socket.emit('world:snapshot', {
-                    entities: nearbyEntities.map(serializeEntity),
-                    players: mapPlayers,
-                    daylight: runtime.world.daylight,
-                    time: runtime.world.time,
-                });
+            for (const lobby of lobbies.values()) {
+                if (lobby.open) updateLobby(lobby, FIXED_STEP);
+            }
+        } else {
+            for (const lobby of lobbies.values()) {
+                if (!lobby.open) continue;
+                lobby.runtime.updateWorld(FIXED_STEP);
+                lobby.runtime.updateEntities(1);
+                lobby.runtime.updateChunks();
+                dispatchAudioEvents(lobby.runtime.world.audio.drainEvents(), lobby.runtime, lobby.connectedPlayers);
+                dispatchParticleEvents(lobby.runtime.world.drainParticleEvents(), lobby.runtime, lobby.connectedPlayers);
             }
         }
     }, FIXED_STEP * 1000);
@@ -182,7 +172,58 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
             }
         }
     });
-    return { app, httpServer, io, runtime };
+    return { app, httpServer, io, runtime: lobbies.get('main').runtime, lobbies, addLobby };
+}
+
+// Create one independently simulated lobby and its connected-player registry.
+function createLobby(id, name) {
+    const connectedPlayers = new Map();
+    let runtime;
+    runtime = new ServerRuntime({
+        spawnInitialPlayer: false,
+        onChunkReady: (playerId, chunk) => connectedPlayers.get(playerId)?.emit('chunk:data', chunk),
+        onBlockChanged: change => {
+            const key = change.chunkPos.join(',');
+            for (const [playerId, socket] of connectedPlayers) {
+                if (runtime.chunkManager.requestedBy.get(key)?.has(playerId)) {
+                    socket.emit('block:update', change);
+                }
+            }
+        },
+    });
+    return { id, name, runtime, connectedPlayers, open: true };
+}
+
+// Advance one lobby and emit its effects and player snapshots.
+function updateLobby(lobby, deltaSeconds) {
+    const { runtime, connectedPlayers } = lobby;
+    runtime.updateWorld(deltaSeconds);
+    runtime.updateEntities(1);
+    runtime.updateChunks();
+    dispatchAudioEvents(runtime.world.audio.drainEvents(), runtime, connectedPlayers);
+    dispatchParticleEvents(runtime.world.drainParticleEvents(), runtime, connectedPlayers);
+
+    const entities = [...runtime.world.entities.values()];
+    const mapPlayers = [...runtime.world.getPlayers()].map(({ id, pos }) => ({ id, pos: [...pos] }));
+    for (const [playerId, socket] of connectedPlayers) {
+        const player = runtime.getPlayer(playerId);
+        if (!player) continue;
+        const radius = ((player.renderDistance ?? runtime.world.renderDistance) + 1) * runtime.world.CHUNK_SIZE;
+        const radiusSquared = radius * radius;
+        const nearbyEntities = entities.filter(entity => {
+            if (entity.id === playerId) return true;
+            const dx = entity.pos[0] - player.pos[0];
+            const dy = entity.pos[1] - player.pos[1];
+            const dz = entity.pos[2] - player.pos[2];
+            return dx * dx + dy * dy + dz * dz <= radiusSquared;
+        });
+        socket.emit('world:snapshot', {
+            entities: nearbyEntities.map(serializeEntity),
+            players: mapPlayers,
+            daylight: runtime.world.daylight,
+            time: runtime.world.time,
+        });
+    }
 }
 
 // Discover browser assets recursively so preload manifests follow the asset tree.
@@ -220,11 +261,11 @@ async function buildAssetManifest() {
 }
 
 // Route each sound according to its world, global, or player-only scope.
-function dispatchAudioEvents(events, runtime, connectedPlayers, io) {
+function dispatchAudioEvents(events, runtime, connectedPlayers) {
     let deliveries = 0;
     for (const event of events) {
         if (event.scope === 'global') {
-            io.emit('audio:play', event);
+            for (const socket of connectedPlayers.values()) socket.emit('audio:play', event);
             deliveries += connectedPlayers.size;
             continue;
         }
@@ -235,8 +276,11 @@ function dispatchAudioEvents(events, runtime, connectedPlayers, io) {
             const playerEvent = event.position
                 ? { ...event, distance: distanceBetween(event.position, player.pos) }
                 : event;
-            io.to(String(event.playerId)).emit('audio:play', playerEvent);
-            deliveries++;
+            const socket = connectedPlayers.get(event.playerId);
+            if (socket) {
+                socket.emit('audio:play', playerEvent);
+                deliveries++;
+            }
             continue;
         }
 

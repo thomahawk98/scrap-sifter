@@ -30,12 +30,48 @@
             z-index: 1;
             pointer-events: none;
         }
+
+        #menu-root {
+            position: fixed;
+            z-index: 2;
+            inset: 0;
+            color: #fff;
+            font-family: Tahoma, sans-serif;
+        }
+
+        #menu-root.hidden { display: none; }
+        .menu-screen { position: absolute; inset: 0; display: grid; place-items: center; }
+        .menu-intro { background: #000; }
+        .audio-prompt { border: 0; background: none; color: #fff; font: 18px Tahoma, sans-serif; cursor: pointer; }
+        .menu-title {
+            background: linear-gradient(180deg, rgba(3, 5, 18, .12), rgba(3, 5, 18, .72)),
+                url('/assets/panorama/space-panorama.svg') center / cover no-repeat;
+        }
+        .title-content, .lobby-content { display: grid; justify-items: center; gap: 28px; text-align: center; }
+        .title-content h1 { margin: 0; font-size: clamp(48px, 8vw, 100px); letter-spacing: .12em; text-shadow: 0 4px 24px #080b22; }
+        .title-options { display: grid; gap: 14px; width: min(260px, 70vw); }
+        .menu-screen button:not(.audio-prompt) {
+            border: 1px solid rgba(191, 224, 255, .6); border-radius: 8px; padding: 12px 24px;
+            color: #f4f8ff; background: rgba(10, 16, 38, .84); font: 18px Tahoma, sans-serif; cursor: pointer;
+        }
+        .menu-screen button:hover:not(:disabled) { background: rgba(67, 93, 145, .9); }
+        .menu-screen button:disabled { opacity: .7; cursor: wait; }
+        .credits { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .72); }
+        .credits[hidden] { display: none; }
+        .credits-card { min-width: 260px; padding: 28px; border: 1px solid #7890bb; border-radius: 10px; background: #10182c; text-align: center; }
+        .menu-lobbies { background: linear-gradient(145deg, #080d1b, #172641); }
+        .lobby-content { width: min(520px, 88vw); }
+        .lobby-content h1 { margin: 0; font-size: clamp(32px, 5vw, 54px); }
+        .menu-error { min-height: 1.2em; margin: 0; color: #ffb3aa; }
+        .lobby-list { display: grid; gap: 10px; width: 100%; }
+        .menu-screen .lobby-entry { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; }
     </style>
 </head>
 
 <body>
     <canvas id="glcanvas"></canvas>
     <canvas id="hudcanvas"></canvas>
+    <div id="menu-root"></div>
     
     <script src="/socket.io/socket.io.js"></script>
     <script type="module" src="./main.js"></script>

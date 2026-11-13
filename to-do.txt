@@ -1,8 +1,5 @@
 ADD:
 
-menu
-add click to enable audio screen
-
 simplistic chunk edge geometry to render far away chunks?
 
 weather
