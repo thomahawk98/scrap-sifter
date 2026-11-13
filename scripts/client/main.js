@@ -40,16 +40,24 @@ try {
 }
 
 
+// Keep a no-player menu socket for lobby creation before anyone joins a world.
+const menuSocket = window.io({ auth: { role: 'menu' } });
+
 // Build a game session only after a lobby is selected and accepted by the server.
-new MainMenu(document.getElementById('menu-root'), assetLoader, (lobby, menu) => {
-    const game = new Game({ assetLoader, lobby });
+new MainMenu(document.getElementById('menu-root'), assetLoader, menuSocket, (lobby, password, menu) => {
+    const game = new Game({ assetLoader, lobby, password });
     game.socket.once('session:ready', () => {
         menu.onJoined();
         new ClientUpdateLoop(game).start();
     });
-    game.socket.on('connect_error', () => {
+    game.socket.on('connect_error', error => {
         game.socket.disconnect();
-        menu.onError('Could not connect to the selected lobby.');
+        const message = error?.message === 'This lobby is full.'
+            ? 'This lobby is full.'
+            : lobby.status === 'private'
+                ? 'Password incorrect or lobby unavailable.'
+                : 'Could not connect to the selected lobby.';
+        menu.onError(message);
     });
     game.socket.connect();
 });

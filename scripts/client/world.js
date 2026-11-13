@@ -8,6 +8,7 @@ export default class ClientWorld {
         this.seed = 0;
         this.daylight = 1;
         this.renderDistance = 5;
+        this.maxRenderDistance = 12;
         this.borderDistance = null;
         this.CHUNK_SIZE = 16;
         this.chunks = new Map();

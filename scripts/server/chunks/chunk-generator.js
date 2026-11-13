@@ -8,6 +8,7 @@ export default class ChunkGenerator {
         this.requestQueue = new Map();
         this.batchSize = batchSize;
         this.playerPositions = [];
+        this.closed = false;
         // Keep worker state in slots so concurrency can grow without adding
         // separate worker properties or dispatch paths.
         this.workers = Array.from({ length: workerCount }, () => {
@@ -61,7 +62,7 @@ export default class ChunkGenerator {
 
     // Dispatch nearest pending batches to idle workers.
     processNextRequests() {
-        if (!this.requestQueue.size || this.playerPositions.length === 0) return;
+        if (this.closed || !this.requestQueue.size || this.playerPositions.length === 0) return;
 
         // Ignore queued work whose clients left the viewing area while it waited.
         this.pruneUnsubscribed();
@@ -107,6 +108,7 @@ export default class ChunkGenerator {
 
     // Apply a worker batch and immediately let the slot process more requests.
     handleWorkerMessage(slot, data) {
+        if (this.closed) return;
         const batch = slot.batch ?? [];
         const generatedChunks = new Map((data.chunks ?? []).map(chunk => [
             this.world.getChunkKey(...chunk.chunkPos), chunk,
@@ -127,10 +129,20 @@ export default class ChunkGenerator {
 
     // Reset failed worker state and return its chunks to the retryable state.
     handleWorkerError(slot, error) {
+        if (this.closed) return;
         console.error(error);
         for (const request of slot.batch ?? []) this.manager.failGenerationRequest(request);
         slot.batch = null;
         slot.busy = false;
         this.processNextRequests();
+    }
+
+    // Stop unused lobby workers when a host deletes their world.
+    async terminate() {
+        if (this.closed) return;
+        this.closed = true;
+        this.requestQueue.clear();
+        this.playerPositions = [];
+        await Promise.all(this.workers.map(slot => slot.worker.terminate()));
     }
 }

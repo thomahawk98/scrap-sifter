@@ -59,12 +59,28 @@
         .credits { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .72); }
         .credits[hidden] { display: none; }
         .credits-card { min-width: 260px; padding: 28px; border: 1px solid #7890bb; border-radius: 10px; background: #10182c; text-align: center; }
-        .menu-lobbies { background: linear-gradient(145deg, #080d1b, #172641); }
+        .menu-lobbies { overflow-y: auto; padding: 20px 0; background: linear-gradient(145deg, #080d1b, #172641); }
         .lobby-content { width: min(520px, 88vw); }
         .lobby-content h1 { margin: 0; font-size: clamp(32px, 5vw, 54px); }
         .menu-error { min-height: 1.2em; margin: 0; color: #ffb3aa; }
         .lobby-list { display: grid; gap: 10px; width: 100%; }
+        .lobby-row { display: flex; gap: 8px; }
+        .lobby-row > .lobby-entry { flex: 0 0 100%; width: 100%; }
+        .lobby-actions { display: flex; flex: 0 0 auto; gap: 6px; }
         .menu-screen .lobby-entry { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; }
+        .lobby-details { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+        .lobby-lock { font-size: 16px; }
+        .lobby-symbol { font-size: 24px; font-weight: bold; }
+        .lobby-settings-content { width: min(540px, 88vw); gap: 18px; }
+        .lobby-settings { display: grid; gap: 12px; width: 100%; }
+        .lobby-settings label, .password-dialog label { display: grid; gap: 6px; text-align: left; font-size: 14px; }
+        .lobby-settings input, .lobby-settings select, .password-dialog input {
+            box-sizing: border-box; width: 100%; border: 1px solid #7184a7; border-radius: 6px;
+            padding: 10px; color: #fff; background: #0d1425; font: 16px Tahoma, sans-serif;
+        }
+        .lobby-settings [hidden] { display: none; }
+        .form-actions { display: flex; justify-content: center; gap: 12px; }
+        .password-dialog .credits-card { display: grid; gap: 16px; }
     </style>
 </head>
 

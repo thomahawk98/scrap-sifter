@@ -5,24 +5,32 @@ import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { readdir } from 'node:fs/promises';
+import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 import ServerRuntime from './runtime.js';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const clientRoot = path.join(projectRoot, 'scripts', 'client');
 const FIXED_STEP = 1 / 60;
 const SNAPSHOT_INTERVAL = 3;
+const MAX_OPEN_LOBBIES = 32;
+const MAX_RENDER_DISTANCE = 12;
+const scrypt = promisify(scryptCallback);
 
 // Serve the browser game and its Socket.IO transport from one LAN origin.
 export function createNetworkServer({ port = Number(process.env.PORT) || 3000, host = process.env.HOST || '0.0.0.0' } = {}) {
     const app = express();
     const lobbies = new Map();
-    const addLobby = (id, name) => {
+    const addLobby = (id, settings) => {
         if (lobbies.has(id)) throw new Error(`Lobby already exists: ${id}`);
-        const lobby = createLobby(id, name);
+        const lobby = createLobby(id, settings);
         lobbies.set(id, lobby);
         return lobby;
     };
-    addLobby('main', 'Main Lobby');
+    addLobby('main', {
+        name: 'Main Lobby', status: 'public', worldSizeChunks: 25,
+        maxRenderDistance: MAX_RENDER_DISTANCE, maxPlayers: 16,
+    });
     app.get('/asset-manifest', async (_request, response) => {
         try {
             response.set('Cache-Control', 'no-store');
@@ -36,7 +44,7 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
     app.get('/api/lobbies', (_request, response) => {
         response.json([...lobbies.values()]
             .filter(lobby => lobby.open)
-            .map(({ id, name, runtime }) => ({ id, name, players: runtime.world.players.size })));
+            .map(serializeLobby));
     });
     // Expose only the browser application and its assets from the web root.
     app.use(express.static(clientRoot));
@@ -46,15 +54,54 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
 
     // Reject unknown or closed lobby IDs before a socket can create a player.
     io.use((socket, next) => {
-        const lobby = lobbies.get(socket.handshake.auth?.lobbyId);
-        if (!lobby?.open) return next(new Error('That lobby is no longer available.'));
-        next();
+        if (socket.handshake.auth?.role === 'menu') return next();
+        authorizeLobbySocket(socket, lobbies).then(next, error => next(error));
     });
 
     // Attach a transport only to the lobby explicitly selected on the title screen.
     io.on('connection', socket => {
+        if (socket.handshake.auth?.role === 'menu') {
+            // Password checks return only a boolean and never allocate a player.
+            socket.on('lobby:verify-password', async (request, acknowledge) => {
+                if (typeof acknowledge !== 'function') return;
+                const lobby = request && typeof request === 'object' ? lobbies.get(request.lobbyId) : null;
+                let valid = false;
+                if (lobby?.open && lobby.status === 'private') {
+                    try { valid = await lobbyPasswordMatches(lobby, request.password); } catch { valid = false; }
+                }
+                acknowledge({ valid });
+            });
+            socket.on('lobby:create', (settings, acknowledge) => {
+                createLobbyFromMenu(settings, socket, lobbies, addLobby, acknowledge).catch(error => {
+                    if (typeof acknowledge === 'function') acknowledge({ ok: false, message: error.message });
+                });
+            });
+            socket.on('lobby:edit', (request, acknowledge) => {
+                editLobbyFromMenu(request, socket, lobbies, acknowledge).catch(error => {
+                    if (typeof acknowledge === 'function') acknowledge({ ok: false, message: error.message });
+                });
+            });
+            socket.on('lobby:delete', async (request, acknowledge) => {
+                if (typeof acknowledge !== 'function') return;
+                const lobby = request && lobbies.get(request.lobbyId);
+                if (!lobby?.open || lobby.hostId !== socket.id) {
+                    acknowledge({ ok: false, message: 'Only the lobby host can delete it.' });
+                    return;
+                }
+                lobby.open = false;
+                lobbies.delete(lobby.id);
+                for (const playerSocket of lobby.connectedPlayers.values()) {
+                    playerSocket.emit('lobby:closed');
+                    playerSocket.disconnect(true);
+                }
+                await lobby.runtime.chunkManager.generator.terminate();
+                acknowledge({ ok: true });
+            });
+            return;
+        }
         const lobby = lobbies.get(socket.handshake.auth?.lobbyId);
         const { runtime, connectedPlayers } = lobby;
+        releaseLobbyReservation(socket);
         socket.join(`lobby:${lobby.id}`);
         const player = runtime.addPlayer();
         player.name = socket.id;
@@ -74,6 +121,7 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
             world: {
                 seed: runtime.world.seed,
                 renderDistance: runtime.world.renderDistance,
+                maxRenderDistance: lobby.maxRenderDistance,
                 chunkSize: runtime.world.CHUNK_SIZE,
                 borderDistance: runtime.world.borderDistance,
             },
@@ -131,7 +179,9 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
 
         // Clamp client preference before it affects visibility and event ranges.
         socket.on('render-distance:set', distance => {
-            if (Number.isInteger(distance)) player.renderDistance = Math.max(2, Math.min(12, distance));
+            if (Number.isInteger(distance)) {
+                player.renderDistance = Math.max(2, Math.min(lobby.maxRenderDistance, distance));
+            }
         });
 
         // Drop all player-owned subscriptions and state on disconnect.
@@ -175,8 +225,8 @@ export function createNetworkServer({ port = Number(process.env.PORT) || 3000, h
     return { app, httpServer, io, runtime: lobbies.get('main').runtime, lobbies, addLobby };
 }
 
-// Create one independently simulated lobby and its connected-player registry.
-function createLobby(id, name) {
+// Create an independently simulated lobby and apply its server-owned settings.
+function createLobby(id, settings) {
     const connectedPlayers = new Map();
     let runtime;
     runtime = new ServerRuntime({
@@ -191,7 +241,161 @@ function createLobby(id, name) {
             }
         },
     });
-    return { id, name, runtime, connectedPlayers, open: true };
+    runtime.world.borderDistance = settings.worldSizeChunks === null
+        ? null : settings.worldSizeChunks * runtime.world.CHUNK_SIZE / 2;
+    runtime.world.renderDistance = Math.min(5, settings.maxRenderDistance);
+    return {
+        id, ...settings, runtime, connectedPlayers, pendingJoins: 0, open: true,
+    };
+}
+
+// Create a lobby from validated menu input without exposing its password record.
+async function createLobbyFromMenu(input, socket, lobbies, addLobby, acknowledge) {
+    if (typeof acknowledge !== 'function') return;
+    try {
+        const settings = validateLobbySettings(input, socket.id);
+        const openLobbyCount = [...lobbies.values()].filter(lobby => lobby.open).length;
+        if (openLobbyCount >= MAX_OPEN_LOBBIES) throw new Error('The server has reached its lobby limit.');
+
+        if (settings.status === 'private') {
+            const passwordRecord = await hashLobbyPassword(settings.password);
+            delete settings.password;
+            Object.assign(settings, passwordRecord);
+        }
+
+        const lobby = addLobby(randomUUID(), settings);
+        lobby.hostId = socket.id;
+        acknowledge({ ok: true, lobby: serializeLobby(lobby) });
+    } catch (error) {
+        acknowledge({ ok: false, message: error.message });
+    }
+}
+
+// Normalize and bound every setting before it can allocate a world runtime.
+function validateLobbySettings(input, socketId, existingLobby = null) {
+    if (!input || typeof input !== 'object') throw new Error('Invalid lobby settings.');
+    const name = String(input.name ?? '').trim() || `${socketId}'s lobby`;
+    if (name.length > 64) throw new Error('Lobby names must be 64 characters or fewer.');
+    if (input.status !== 'public' && input.status !== 'private') throw new Error('Choose a public or private lobby.');
+
+    const worldSizeChunks = input.worldSizeChunks === null ? null : input.worldSizeChunks;
+    if (worldSizeChunks !== null && (!Number.isInteger(worldSizeChunks) || worldSizeChunks < 2 || worldSizeChunks > 62_500)) {
+        throw new Error('World size must be blank for infinite or between 2 and 62,500 chunks.');
+    }
+    const maxRenderDistance = input.maxRenderDistance;
+    if (!Number.isInteger(maxRenderDistance) || maxRenderDistance < 2 || maxRenderDistance > MAX_RENDER_DISTANCE) {
+        throw new Error(`Maximum render distance must be between 2 and ${MAX_RENDER_DISTANCE} chunks.`);
+    }
+    const maxPlayers = input.maxPlayers;
+    if (!Number.isInteger(maxPlayers) || maxPlayers < 1 || maxPlayers > 64) {
+        throw new Error('Maximum players must be between 1 and 64.');
+    }
+
+    const settings = { name, status: input.status, worldSizeChunks, maxRenderDistance, maxPlayers };
+    if (input.status === 'private') {
+        if (typeof input.password === 'string' && input.password.trim() && input.password.length <= 128) {
+            settings.password = input.password;
+        } else if (existingLobby?.status !== 'private') {
+            throw new Error('Private lobbies need an access code of 1 to 128 characters.');
+        }
+    }
+    return settings;
+}
+
+// Apply host edits while retaining runtime state and keeping credentials private.
+async function editLobbyFromMenu(request, socket, lobbies, acknowledge) {
+    if (typeof acknowledge !== 'function') return;
+    const lobby = request && lobbies.get(request.lobbyId);
+    if (!lobby?.open || lobby.hostId !== socket.id) throw new Error('Only the lobby host can edit it.');
+    const settings = validateLobbySettings(request.settings, socket.id, lobby);
+    if (settings.password) {
+        Object.assign(lobby, await hashLobbyPassword(settings.password));
+    } else if (settings.status === 'public') {
+        delete lobby.passwordSalt;
+        delete lobby.passwordHash;
+    }
+    delete settings.password;
+    Object.assign(lobby, settings);
+    lobby.runtime.world.borderDistance = settings.worldSizeChunks === null
+        ? null : settings.worldSizeChunks * lobby.runtime.world.CHUNK_SIZE / 2;
+    lobby.runtime.world.renderDistance = Math.min(5, settings.maxRenderDistance);
+    for (const entity of lobby.runtime.world.entities.values()) {
+        lobby.runtime.world.clampEntityPosition(entity);
+    }
+    for (const [playerId, playerSocket] of lobby.connectedPlayers) {
+        const player = lobby.runtime.getPlayer(playerId);
+        if (!player) continue;
+        player.renderDistance = Math.min(player.renderDistance ?? settings.maxRenderDistance, settings.maxRenderDistance);
+        playerSocket.emit('lobby:settings', {
+            borderDistance: lobby.runtime.world.borderDistance,
+            maxRenderDistance: settings.maxRenderDistance,
+            renderDistance: player.renderDistance,
+        });
+    }
+    acknowledge({ ok: true, lobby: serializeLobby(lobby) });
+}
+
+// Store only a salted scrypt hash so lobby passwords are never retrievable as text.
+async function hashLobbyPassword(password) {
+    const salt = randomBytes(16);
+    const hash = await scrypt(password, salt, 64);
+    return { passwordSalt: salt.toString('hex'), passwordHash: hash.toString('hex') };
+}
+
+// Compare a submitted password in constant time without returning any secret data.
+async function lobbyPasswordMatches(lobby, password) {
+    if (typeof password !== 'string' || typeof lobby.passwordHash !== 'string') return false;
+    const expected = Buffer.from(lobby.passwordHash, 'hex');
+    const candidate = await scrypt(password, Buffer.from(lobby.passwordSalt, 'hex'), expected.length);
+    return candidate.length === expected.length && timingSafeEqual(candidate, expected);
+}
+
+// Authorize one selected lobby and reserve a player slot until socket setup completes.
+async function authorizeLobbySocket(socket, lobbies) {
+    const auth = socket.handshake.auth ?? {};
+    const lobby = lobbies.get(auth.lobbyId);
+    if (!lobby?.open) throw new Error('That lobby is no longer available.');
+
+    if (lobby.status === 'private') {
+        let passwordMatches = false;
+        try {
+            passwordMatches = await lobbyPasswordMatches(lobby, auth.password);
+        } catch {
+            throw new Error('Could not verify private lobby access.');
+        }
+        if (!passwordMatches) throw new Error('Could not join this private lobby. Check the password or lobby availability.');
+    }
+
+    if (lobby.connectedPlayers.size + lobby.pendingJoins >= lobby.maxPlayers) {
+        throw new Error('This lobby is full.');
+    }
+    if (socket.conn.readyState !== 'open') throw new Error('The client disconnected before joining.');
+    lobby.pendingJoins++;
+    socket.data.pendingLobbyReservation = lobby;
+    socket.once('disconnect', () => releaseLobbyReservation(socket));
+}
+
+// Release reserved capacity whether a socket joins successfully or disconnects first.
+function releaseLobbyReservation(socket) {
+    const lobby = socket.data.pendingLobbyReservation;
+    if (!lobby) return;
+    lobby.pendingJoins = Math.max(0, lobby.pendingJoins - 1);
+    delete socket.data.pendingLobbyReservation;
+}
+
+// Send only join-safe lobby settings; password hashes and salts stay server-side.
+function serializeLobby(lobby) {
+    return {
+        id: lobby.id,
+        name: lobby.name,
+        status: lobby.status,
+        players: lobby.connectedPlayers.size,
+        maxPlayers: lobby.maxPlayers,
+        maxRenderDistance: lobby.maxRenderDistance,
+        worldSizeChunks: lobby.worldSizeChunks,
+        hostId: lobby.hostId ?? null,
+        serverUrl: lobby.serverUrl ?? null,
+    };
 }
 
 // Advance one lobby and emit its effects and player snapshots.

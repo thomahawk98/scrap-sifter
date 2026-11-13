@@ -31,7 +31,8 @@ export default class WorldMapScale {
         const fadeStart = Math.max(0, currentExtent - FRACTAL_FADE_DISTANCE);
         if (farthestCoordinate >= fadeStart) {
             const progress = (farthestCoordinate - fadeStart) / (currentExtent - fadeStart);
-            const cameraExtent = currentExtent / (1 - (2 / 3) * progress);
+            const cameraProgress = easeInOut(progress);
+            const cameraExtent = currentExtent / (1 - (2 / 3) * cameraProgress);
             return [
                 { extent: currentExtent, cameraExtent, opacity: 1 - progress },
                 { extent: currentExtent * 3, cameraExtent, opacity: progress },
@@ -47,7 +48,8 @@ export default class WorldMapScale {
             }
             if (farthestCoordinate < smallerExtent) {
                 const progress = (smallerExtent - farthestCoordinate) / (smallerExtent - inwardFadeStart);
-                const cameraExtent = currentExtent / (1 + 2 * progress);
+                const cameraProgress = easeInOut(progress);
+                const cameraExtent = currentExtent / (1 + 2 * cameraProgress);
                 return [
                     { extent: currentExtent, cameraExtent, opacity: 1 - progress },
                     { extent: smallerExtent, cameraExtent, opacity: progress },
@@ -57,4 +59,10 @@ export default class WorldMapScale {
 
         return [{ extent: currentExtent, cameraExtent: currentExtent, opacity: 1 }];
     }
+}
+
+// Smooth camera zoom through the local-map transition while opacity fades linearly.
+function easeInOut(progress) {
+    const eased = 1.02 / (1 + 2.71828 ** (-10 * (progress - 0.5))) - 0.007;
+    return Math.min(Math.max(eased, 0), 1);
 }

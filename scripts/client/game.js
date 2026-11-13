@@ -3,7 +3,7 @@ import Renderer from './render/renderer.js';
 
 // this is the client side game replica, actual updates happen server side
 export default class Game {
-    constructor({ assetLoader = null, lobby, keyBindings = {}, mouseBindings = {} } = {}) {
+    constructor({ assetLoader = null, lobby, password = '', keyBindings = {}, mouseBindings = {} } = {}) {
         this.glCanvas = document.getElementById('glcanvas');
         this.hudCanvas = document.getElementById('hudcanvas');
 
@@ -20,7 +20,7 @@ export default class Game {
 
         // compose the browser-side transport and presentation components
         this.socket = window.io(lobby.serverUrl || window.location.origin, {
-            autoConnect: false, auth: { lobbyId: lobby.id },
+            autoConnect: false, auth: { lobbyId: lobby.id, password },
         });
         this.renderer = new Renderer(this.glCanvas, assetLoader);
         this.renderer.resize();

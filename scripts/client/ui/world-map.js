@@ -5,6 +5,7 @@ const GRID_DIVISIONS = 3;
 const CLOSED_PANEL_SIZE = 210;
 const OPEN_PANEL_SIZE = 430;
 const MAP_CUBE_PIXEL_SPAN = 136;
+const MOUSE_JUMP_THRESHOLD = 5;
 const MAP_UP = normalize([1, 1, 1]);
 const MAP_RIGHT = normalize([1, -1, 0]);
 const MAP_DEPTH = normalize(cross(MAP_RIGHT, MAP_UP));
@@ -374,8 +375,17 @@ export default class WorldMap {
 
     // Rotate the map view while the user drags over the panel.
     drag(event) {
+        if (!this.open) return;
+        const dx = this.dragging ? event.clientX - this.lastPointer[0] : event.movementX;
+        const dy = this.dragging ? event.clientY - this.lastPointer[1] : event.movementY;
+        const distance = Math.hypot(dx, dy);
+        const movement = {
+            x: event.clientX, y: event.clientY, dx, dy, distance,
+            exceedsJumpThreshold: distance > MOUSE_JUMP_THRESHOLD,
+        };
+        console.log('[WorldMap] mouse movement', movement);
+        if (movement.exceedsJumpThreshold) console.warn('[WorldMap] large mouse movement', movement);
         if (!this.dragging) return;
-        const dx = event.clientX - this.lastPointer[0], dy = event.clientY - this.lastPointer[1];
         this.yaw -= dx * 0.008;
         this.pitch -= dy * 0.008;
         this.lastPointer = [event.clientX, event.clientY];

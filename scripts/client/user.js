@@ -35,11 +35,15 @@ export default class User {
                 this.hud.worldMap.contains(event.clientX, event.clientY),
             changeRenderDistance: delta => {
                 this.world.renderDistance += delta;
-                this.world.renderDistance = Math.clamp(this.world.renderDistance, 2, 12);
+                this.world.renderDistance = Math.clamp(
+                    this.world.renderDistance, 2, this.world.maxRenderDistance ?? 12,
+                );
                 this.socket.emit('render-distance:set', this.world.renderDistance);
                 this.chunkManager.lastCenter = null;
             },
-            clampRenderDistance: () => { this.world.renderDistance = Math.clamp(this.world.renderDistance, 2, 12); },
+            clampRenderDistance: () => {
+                this.world.renderDistance = Math.clamp(this.world.renderDistance, 2, this.world.maxRenderDistance ?? 12);
+            },
             inspectChunk: position => console.log(this.world.getChunk(...this.world.getChunkCoords(...position))),
             inspectChunks: () => console.log(this.world.chunks),
         });
@@ -85,6 +89,7 @@ export default class User {
             // update the world with the session data
             this.world.seed = session.world.seed;
             this.world.renderDistance = session.world.renderDistance;
+            this.world.maxRenderDistance = session.world.maxRenderDistance ?? 12;
             this.world.borderDistance = session.world.borderDistance ?? null;
 
             // add player from session
@@ -115,6 +120,14 @@ export default class User {
 
         // receive info about world events / updates
         this.socket.on('chunk:data', data => this.chunkManager.receive(data));
+        this.socket.on('lobby:settings', settings => {
+            this.world.borderDistance = settings.borderDistance;
+            this.world.maxRenderDistance = settings.maxRenderDistance;
+            this.world.renderDistance = settings.renderDistance;
+            this.chunkManager.clear();
+            this.chunkManager.lastCenter = null;
+        });
+        this.socket.on('lobby:closed', () => window.location.reload());
         this.socket.on('block:update', change => {
             if (change.block?.type && change.block.type !== 'air') this.renderer.ensureBlockTexture(change.block.type);
             if (change.previousBlock && change.block?.type === 'air' && change.previousBlock.type !== 'air') {
