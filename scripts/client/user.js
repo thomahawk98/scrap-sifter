@@ -184,7 +184,7 @@ export default class User {
             return;
         }
         this.player.closeMenu();
-        this.input.canvas.requestPointerLock();
+        this.input.requestPointerLock();
     }
 
     // Let the shared menu key close the map before toggling the inventory panel.

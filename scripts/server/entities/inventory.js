@@ -8,8 +8,8 @@ export default class Inventory {
     constructor(presetName = null) {
         this.items = presetName ? this.getPreset(presetName) : [];
         this.selectedSlot = 0;
-        this.WIDTH = 8;
-        this.HEIGHT = 4;
+        this.WIDTH = 4;
+        this.HEIGHT = 3;
         this.open = false;
         this.cursorItem = null;
     }

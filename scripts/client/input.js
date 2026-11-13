@@ -42,6 +42,10 @@ export default class InputController {
         this.onToggleMap = onToggleMap;
         this.onToggleMenu = onToggleMenu;
         this.isMapPointerOver = isMapPointerOver;
+        this.lastMouseMoveTimestamp = null;
+        this.lastPointerLockChangeTimestamp = null;
+        this.pointerLockChangedTo = null;
+        this.pointerLockMovementMode = 'unknown';
 
         // controls
         const configuredBindings = { ...DEFAULT_KEY_BINDINGS, ...keyBindings };
@@ -68,10 +72,14 @@ export default class InputController {
     bindEvents() {
         this.canvas.addEventListener('click', () => {
             if (this.player.menuOpen) return;
-            this.canvas.requestPointerLock();
+            this.requestPointerLock();
         });
 
         document.addEventListener('mousemove', event => this.handleMouseMove(event));
+        document.addEventListener('pointerlockchange', event => {
+            this.lastPointerLockChangeTimestamp = event.timeStamp;
+            this.pointerLockChangedTo = document.pointerLockElement === this.canvas ? 'locked' : 'unlocked';
+        });
         document.addEventListener('wheel', event => this.handleWheel(event));
         document.addEventListener('keydown', event => this.handleKeyDown(event));
         document.addEventListener('keyup', event => this.handleKeyUp(event));
@@ -82,12 +90,75 @@ export default class InputController {
         document.addEventListener('mouseup', event => { this.mouse.buttons[event.button] = false; });
     }
 
+    // Prefer raw movement to bypass OS acceleration, then fall back if unsupported.
+    requestPointerLock() {
+        const useAdjustedFallback = error => {
+            this.pointerLockMovementMode = 'adjusted-fallback';
+            console.warn('[InputController] unadjusted pointer lock unavailable; using adjusted movement', error);
+            try {
+                const fallbackRequest = this.canvas.requestPointerLock();
+                fallbackRequest?.catch?.(fallbackError => {
+                    console.warn('[InputController] pointer lock request failed', fallbackError);
+                });
+            } catch (fallbackError) {
+                console.warn('[InputController] pointer lock request failed', fallbackError);
+            }
+        };
+
+        try {
+            const request = this.canvas.requestPointerLock({ unadjustedMovement: true });
+            if (!request || typeof request.then !== 'function') {
+                this.pointerLockMovementMode = 'unadjusted-request-unconfirmed';
+                console.info('[InputController] requested unadjusted pointer lock; browser confirmation unavailable');
+                return;
+            }
+            request.then(() => {
+                this.pointerLockMovementMode = 'unadjusted';
+                console.info('[InputController] unadjusted pointer lock active');
+            }, useAdjustedFallback);
+        } catch (error) {
+            useAdjustedFallback(error);
+        }
+    }
+
     // Rotate the view under pointer lock or update the inventory cursor otherwise.
     handleMouseMove(event) {
-        if (document.pointerLockElement === this.canvas) {
+        const pointerLocked = document.pointerLockElement === this.canvas;
+        const eventTimestamp = event.timeStamp;
+        const distance = Math.hypot(event.movementX, event.movementY);
+        const movement = {
+            source: pointerLocked ? 'game-look' : 'unlocked-cursor',
+            timestamp: performance.now(),
+            eventTimestamp,
+            timeSincePreviousMouseMove: this.lastMouseMoveTimestamp === null
+                ? null : eventTimestamp - this.lastMouseMoveTimestamp,
+            timeSincePointerLockChange: this.lastPointerLockChangeTimestamp === null
+                ? null : eventTimestamp - this.lastPointerLockChangeTimestamp,
+            pointerLockChangedTo: this.pointerLockChangedTo,
+            pointerLockMovementMode: this.pointerLockMovementMode,
+            movementX: event.movementX,
+            movementY: event.movementY,
+            distance,
+            buttons: event.buttons,
+            button: event.button,
+            pointerLocked,
+            menuOpen: this.player.menuOpen,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            screenX: event.screenX,
+            screenY: event.screenY,
+            exceedsJumpThreshold: distance > 20,
+        };
+        this.lastMouseMoveTimestamp = eventTimestamp;
+        if (movement.exceedsJumpThreshold) {
+            console.warn('[InputController] large mouse movement', movement);
+        }
+
+        if (pointerLocked) {
             this.player.rotateView(event.movementX, event.movementY, this.isMouseDown('roll'));
             return;
         }
+
         this.mouse.x = event.pageX;
         this.mouse.y = event.pageY;
     }
@@ -146,7 +217,7 @@ export default class InputController {
     toggleMenu() {
         if (this.player.menuOpen) {
             this.player.closeMenu();
-            this.canvas.requestPointerLock();
+            this.requestPointerLock();
             return;
         }
 
